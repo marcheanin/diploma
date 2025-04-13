@@ -95,4 +95,36 @@ def analyze_target_correlations(data, target_col, output_path):
     
     print(f"\nFeature correlations with {target_col} have been saved to:")
     print(f"- CSV: {output_path}/feature_correlations.csv")
-    print(f"- Plot: {output_path}/feature_correlations.png") 
+    print(f"- Plot: {output_path}/feature_correlations.png")
+
+def save_model_results(metrics, feature_importance, output_path):
+    """
+    Save model evaluation results and feature importance.
+    
+    Args:
+        metrics: dict, containing model metrics
+        feature_importance: pandas DataFrame, feature importance scores
+        output_path: str, path to save results
+    """
+    import os
+    
+    # Create model results directory
+    model_path = os.path.join(output_path, 'model_results')
+    os.makedirs(model_path, exist_ok=True)
+    
+    # Save metrics
+    with open(os.path.join(model_path, 'metrics.txt'), 'w') as f:
+        f.write("=== Training Metrics ===\n")
+        f.write(f"Accuracy: {metrics['train']['accuracy']:.4f}\n")
+        f.write(f"F1 Score: {metrics['train']['f1']:.4f}\n")
+        f.write("\nDetailed Training Report:\n")
+        f.write(metrics['train']['detailed_report'])
+        
+        f.write("\n\n=== Validation Metrics ===\n")
+        f.write(f"Accuracy: {metrics['validation']['accuracy']:.4f}\n")
+        f.write(f"F1 Score: {metrics['validation']['f1']:.4f}\n")
+        f.write("\nDetailed Validation Report:\n")
+        f.write(metrics['validation']['detailed_report'])
+    
+    # Save feature importance
+    feature_importance.to_csv(os.path.join(model_path, 'feature_importance.csv'), index=False) 
