@@ -1,11 +1,27 @@
 from preprocessing.data_loader import DataLoader
 from preprocessing.data_preprocessor import DataPreprocessor
 from preprocessing.outlier_remover import OutlierRemover
+import os
 from utils.data_analysis import (
     print_missing_summary,
     print_numeric_stats,
-    print_target_distribution
+    print_target_distribution,
+    analyze_target_correlations
 )
+
+def get_dataset_name(path):
+    """
+    Extract dataset name from file path.
+    Example: 'datasets/credit-score-classification/train.csv' -> 'credit-score-classification'
+    """
+    # Split path and get the directory name containing the dataset
+    parts = os.path.normpath(path).split(os.sep)
+    if 'datasets' in parts:
+        # Get the directory name after 'datasets'
+        datasets_index = parts.index('datasets')
+        if len(parts) > datasets_index + 1:
+            return parts[datasets_index + 1]
+    return 'unknown_dataset'
 
 def process_data(train_path, test_path, target_column, imputation_method='knn', **kwargs):
     """
@@ -68,21 +84,30 @@ def process_data(train_path, test_path, target_column, imputation_method='knn', 
 
     # Save processed data
     output_suffix = f"_processed_{imputation_method}"
-    train_data_clean.to_csv(f'datasets/train{output_suffix}.csv', index=False)
+    train_data_clean.to_csv(f'results/train{output_suffix}.csv', index=False)
     if test_data is not None:
-        test_data.to_csv(f'datasets/test{output_suffix}.csv', index=False)
+        test_data.to_csv(f'results/test{output_suffix}.csv', index=False)
+
+    # Get dataset name from path
+    dataset_name = get_dataset_name(train_path)
+    research_path = os.path.join("research", dataset_name)
+    os.makedirs(research_path, exist_ok=True)
+
+    # Analyze and save feature correlations with target
+    print("\n=== Analyzing feature correlations with target variable ===")
+    analyze_target_correlations(train_data_clean, target_column, research_path)
 
 def main():
-    # Use the correct paths to our dataset files
-    train_path = "datasets/credit-score-classification/train.csv"
-    test_path = "datasets/credit-score-classification/test.csv"
-    target_column = "Credit_Score"
+    # Process Credit Score Classification dataset
+    # print("\n=== Processing Credit Score Classification Dataset ===")
+    # train_path = "datasets/credit-score-classification/train.csv"
+    # test_path = "datasets/credit-score-classification/test.csv"
+    # target_column = "Credit_Score"
 
-    # Process with KNN imputation
-    print("\n=== Processing with KNN imputation ===")
-    process_data(train_path, test_path, target_column, 
-                imputation_method='knn', 
-                n_neighbors=5)
+    # print("\n=== Processing with KNN imputation ===")
+    # process_data(train_path, test_path, target_column, 
+    #             imputation_method='knn', 
+    #             n_neighbors=5)
 
     # Process with MissForest imputation
     # print("\n=== Processing with MissForest imputation ===")
@@ -91,6 +116,16 @@ def main():
     #             max_iter=10,
     #             n_estimators=100,
     #             random_state=42)
+
+    # Process Heart Disease dataset
+    print("\n=== Processing Heart Disease Dataset ===")
+    data_path = "datasets/credit-score-classification-manual-cleaned.csv"
+    target_column = "Credit_Score"
+
+    print("\n=== Processing with KNN imputation ===")
+    process_data(data_path, None, target_column,
+                imputation_method='knn',
+                n_neighbors=5)
 
 if __name__ == "__main__":
     main() 

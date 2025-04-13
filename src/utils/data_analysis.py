@@ -58,4 +58,41 @@ def print_target_distribution(data, target_col):
         print(f"{value!r:8} | {count:5} | {percent:.2f}%")
     
     if target_counts.isna().sum() > 0:
-        print("\nWarning: missing values found in target variable!") 
+        print("\nWarning: missing values found in target variable!")
+
+def analyze_target_correlations(data, target_col, output_path):
+    """
+    Calculate and save correlations between features and target variable.
+    
+    Args:
+        data: pandas DataFrame
+        target_col: str, name of the target column
+        output_path: str, path to save correlation results
+    """
+    import pandas as pd
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    
+    # Calculate correlations with target
+    correlations = data.corr()[target_col].sort_values(ascending=False)
+    
+    # Create a DataFrame with correlations
+    corr_df = pd.DataFrame({
+        'Feature': correlations.index,
+        'Correlation': correlations.values
+    })
+    
+    # Save correlations to CSV
+    corr_df.to_csv(f"{output_path}/feature_correlations.csv", index=False)
+    
+    # Create correlation plot
+    plt.figure(figsize=(12, 8))
+    sns.barplot(data=corr_df, x='Correlation', y='Feature')
+    plt.title(f'Feature Correlations with {target_col}')
+    plt.tight_layout()
+    plt.savefig(f"{output_path}/feature_correlations.png")
+    plt.close()
+    
+    print(f"\nFeature correlations with {target_col} have been saved to:")
+    print(f"- CSV: {output_path}/feature_correlations.csv")
+    print(f"- Plot: {output_path}/feature_correlations.png") 
