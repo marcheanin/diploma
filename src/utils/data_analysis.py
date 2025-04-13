@@ -112,6 +112,9 @@ def save_model_results(metrics, feature_importance, output_path):
     model_path = os.path.join(output_path, 'model_results')
     os.makedirs(model_path, exist_ok=True)
     
+    # Determine which evaluation metrics we have
+    eval_key = 'test' if 'test' in metrics else 'validation'
+    
     # Save metrics
     with open(os.path.join(model_path, 'metrics.txt'), 'w') as f:
         f.write("=== Training Metrics ===\n")
@@ -120,11 +123,11 @@ def save_model_results(metrics, feature_importance, output_path):
         f.write("\nDetailed Training Report:\n")
         f.write(metrics['train']['detailed_report'])
         
-        f.write("\n\n=== Validation Metrics ===\n")
-        f.write(f"Accuracy: {metrics['validation']['accuracy']:.4f}\n")
-        f.write(f"F1 Score: {metrics['validation']['f1']:.4f}\n")
-        f.write("\nDetailed Validation Report:\n")
-        f.write(metrics['validation']['detailed_report'])
+        f.write(f"\n\n=== {eval_key.title()} Metrics ===\n")
+        f.write(f"Accuracy: {metrics[eval_key]['accuracy']:.4f}\n")
+        f.write(f"F1 Score: {metrics[eval_key]['f1']:.4f}\n")
+        f.write(f"\nDetailed {eval_key.title()} Report:\n")
+        f.write(metrics[eval_key]['detailed_report'])
     
     # Save feature importance
     feature_importance.to_csv(os.path.join(model_path, 'feature_importance.csv'), index=False) 

@@ -130,16 +130,18 @@ def train_model(train_data_path, test_data_path, target_column, research_path):
     
     print("\n=== Training and evaluating model ===")
     model_trainer = ModelTrainer()
-    metrics, feature_importance = model_trainer.train(train_data, target_column)
+    metrics, feature_importance = model_trainer.train(train_data, test_data, target_column)
     
     # Print metrics
     print("\nTraining Metrics:")
     print(f"Accuracy: {metrics['train']['accuracy']:.4f}")
     print(f"F1 Score: {metrics['train']['f1']:.4f}")
     
-    print("\nValidation Metrics:")
-    print(f"Accuracy: {metrics['validation']['accuracy']:.4f}")
-    print(f"F1 Score: {metrics['validation']['f1']:.4f}")
+    # Determine which evaluation metrics we have (test or validation)
+    eval_key = 'test' if 'test' in metrics else 'validation'
+    print(f"\n{eval_key.title()} Metrics:")
+    print(f"Accuracy: {metrics[eval_key]['accuracy']:.4f}")
+    print(f"F1 Score: {metrics[eval_key]['f1']:.4f}")
     
     # Save model results
     save_model_results(metrics, feature_importance, research_path)
@@ -147,19 +149,19 @@ def train_model(train_data_path, test_data_path, target_column, research_path):
     return model_trainer
 
 def main():
-    print("\n=== Processing Manual Cleaned Dataset ===")
-    data_path = "datasets/credit-score-classification-manual-cleaned.csv"
-    target_column = "Credit_Score"
-
-    # print("\n=== Processing Credit Score Dataset ===")
-    # train_path = "datasets/credit-score-classification/train.csv"
-    # test_path = "datasets/credit-score-classification/test.csv"
+    # print("\n=== Processing Manual Cleaned Dataset ===")
+    # data_path = "datasets/credit-score-classification-manual-cleaned.csv"
     # target_column = "Credit_Score"
+
+    print("\n=== Processing Credit Score Dataset ===")
+    train_path = "datasets/credit-score-classification/train.csv"
+    test_path = "datasets/credit-score-classification/test.csv"
+    target_column = "Credit_Score"
 
     # Process data
     print("\n=== Processing data with KNN imputation ===")
     train_data_path, test_data_path, research_path = process_data(
-        data_path, None, target_column,
+        train_path, test_path, target_column,
         imputation_method='knn',
         n_neighbors=5
     )
