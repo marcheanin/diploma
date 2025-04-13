@@ -36,10 +36,16 @@ def process_data(train_path, test_path, target_column, imputation_method='knn', 
         **kwargs: additional arguments for imputation method
         
     Returns:
-        tuple: (processed_data_path, research_path)
+        tuple: (train_data_path, test_data_path, research_path)
     """
-    # Create results directory if it doesn't exist
-    os.makedirs('results', exist_ok=True)
+    # Get dataset name and create paths
+    dataset_name = get_dataset_name(train_path)
+    results_path = os.path.join('results', dataset_name)
+    research_path = os.path.join("research", dataset_name)
+    
+    # Create necessary directories
+    os.makedirs(results_path, exist_ok=True)
+    os.makedirs(research_path, exist_ok=True)
 
     # Load data
     loader = DataLoader(train_path=train_path, test_path=test_path)
@@ -89,30 +95,27 @@ def process_data(train_path, test_path, target_column, imputation_method='knn', 
     train_data_clean = outlier_remover.remove_outliers(train_data)
     print("\nTrain dataset size after imputation and outlier removal:", train_data_clean.shape)
 
-    # Get dataset name and create paths
-    dataset_name = get_dataset_name(train_path)
-    research_path = os.path.join("research", dataset_name)
-    os.makedirs(research_path, exist_ok=True)
-
     # Save processed data
     output_suffix = f"_processed_{imputation_method}"
-    processed_data_path = os.path.join('results', f'train{output_suffix}.csv')
-    train_data_clean.to_csv(processed_data_path, index=False)
-    if test_data is not None:
-        test_data.to_csv(os.path.join('results', f'test{output_suffix}.csv'), index=False)
+    train_data_path = os.path.join(results_path, f'train{output_suffix}.csv')
+    test_data_path = os.path.join(results_path, f'test{output_suffix}.csv')
+    
+    train_data_clean.to_csv(train_data_path, index=False)
+    test_data.to_csv(test_data_path, index=False)
 
     # Analyze and save feature correlations with target
     print("\n=== Analyzing feature correlations with target variable ===")
     analyze_target_correlations(train_data_clean, target_column, research_path)
     
-    return processed_data_path, research_path
+    return train_data_path, test_data_path, research_path
 
-def train_model(data_path, target_column, research_path):
+def train_model(train_data_path, test_data_path, target_column, research_path):
     """
     Train and evaluate model on processed data.
     
     Args:
-        data_path: str, path to processed data CSV file
+        train_data_path: str, path to processed train data CSV file
+        test_data_path: str, path to processed test data CSV file
         target_column: str, name of target column
         research_path: str, path to save research results
     
@@ -120,12 +123,14 @@ def train_model(data_path, target_column, research_path):
         ModelTrainer: trained model instance
     """
     print("\n=== Loading processed data ===")
-    data = pd.read_csv(data_path)
-    print(f"Loaded data shape: {data.shape}")
+    train_data = pd.read_csv(train_data_path)
+    test_data = pd.read_csv(test_data_path)
+    print(f"Loaded train data shape: {train_data.shape}")
+    print(f"Loaded test data shape: {test_data.shape}")
     
     print("\n=== Training and evaluating model ===")
     model_trainer = ModelTrainer()
-    metrics, feature_importance = model_trainer.train(data, target_column)
+    metrics, feature_importance = model_trainer.train(train_data, target_column)
     
     # Print metrics
     print("\nTraining Metrics:")
@@ -142,14 +147,18 @@ def train_model(data_path, target_column, research_path):
     return model_trainer
 
 def main():
-    # Process Heart Disease dataset
-    print("\n=== Processing Heart Disease Dataset ===")
+    print("\n=== Processing Manual Cleaned Dataset ===")
     data_path = "datasets/credit-score-classification-manual-cleaned.csv"
     target_column = "Credit_Score"
 
+    # print("\n=== Processing Credit Score Dataset ===")
+    # train_path = "datasets/credit-score-classification/train.csv"
+    # test_path = "datasets/credit-score-classification/test.csv"
+    # target_column = "Credit_Score"
+
     # Process data
     print("\n=== Processing data with KNN imputation ===")
-    processed_data_path, research_path = process_data(
+    train_data_path, test_data_path, research_path = process_data(
         data_path, None, target_column,
         imputation_method='knn',
         n_neighbors=5
@@ -157,7 +166,7 @@ def main():
     
     # Train and evaluate model
     print("\n=== Training model ===")
-    model = train_model(processed_data_path, target_column, research_path)
+    model = train_model(train_data_path, test_data_path, target_column, research_path)
 
 if __name__ == "__main__":
     main() 

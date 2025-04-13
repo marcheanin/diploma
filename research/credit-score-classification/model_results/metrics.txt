@@ -1,0 +1,30 @@
+=== Training Metrics ===
+Accuracy: 1.0000
+F1 Score: 1.0000
+
+Detailed Training Report:
+              precision    recall  f1-score   support
+
+           0       1.00      1.00      1.00     12532
+           1       1.00      1.00      1.00     22321
+           2       1.00      1.00      1.00     41147
+
+    accuracy                           1.00     76000
+   macro avg       1.00      1.00      1.00     76000
+weighted avg       1.00      1.00      1.00     76000
+
+
+=== Validation Metrics ===
+Accuracy: 0.7911
+F1 Score: 0.7904
+
+Detailed Validation Report:
+              precision    recall  f1-score   support
+
+           0       0.76      0.69      0.72      3133
+           1       0.78      0.80      0.79      5580
+           2       0.80      0.82      0.81     10287
+
+    accuracy                           0.79     19000
+   macro avg       0.78      0.77      0.77     19000
+weighted avg       0.79      0.79      0.79     19000
