@@ -4,6 +4,8 @@ from sklearn.metrics import classification_report, accuracy_score, f1_score
 import pandas as pd
 import numpy as np
 import os
+import matplotlib.pyplot as plt
+from sklearn.model_selection import learning_curve
 
 class ModelTrainer:
     """
@@ -21,7 +23,49 @@ class ModelTrainer:
         self.validation_size = validation_size
         self.model = None
         
-    def train(self, train_data, test_data, target_column):
+    def plot_learning_curves(self, X, y, output_path):
+        train_sizes, train_scores, test_scores = learning_curve(
+            self.model, X, y,
+            cv=5,
+            n_jobs=-1,
+            train_sizes=np.linspace(0.1, 1.0, 10),
+            scoring='accuracy'
+        )
+        
+        train_mean = np.mean(train_scores, axis=1)
+        train_std = np.std(train_scores, axis=1)
+        test_mean = np.mean(test_scores, axis=1)
+        test_std = np.std(test_scores, axis=1)
+        
+        plt.figure(figsize=(10, 6))
+        plt.plot(train_sizes, train_mean, label='Training score', color='blue', marker='o')
+        plt.fill_between(train_sizes, train_mean - train_std, train_mean + train_std, alpha=0.15, color='blue')
+        plt.plot(train_sizes, test_mean, label='Cross-validation score', color='red', marker='o')
+        plt.fill_between(train_sizes, test_mean - test_std, test_mean + test_std, alpha=0.15, color='red')
+        
+        plt.xlabel('Training Examples')
+        plt.ylabel('Accuracy Score')
+        plt.title('Learning Curves')
+        plt.legend(loc='lower right')
+        plt.grid(True)
+        
+        curves_path = os.path.join(output_path, 'learning_curves.png')
+        plt.savefig(curves_path)
+        plt.close()
+        
+        return {
+            'train_sizes': train_sizes,
+            'train_scores': {
+                'mean': train_mean,
+                'std': train_std
+            },
+            'test_scores': {
+                'mean': test_mean,
+                'std': test_std
+            }
+        }
+        
+    def train(self, train_data, test_data, target_column, output_path=None):
         """
         Train the model using pre-split train and test data.
         If test data has no target column, uses part of train data for evaluation.
@@ -34,7 +78,6 @@ class ModelTrainer:
         Returns:
             dict: Dictionary containing evaluation metrics
         """
-        # Check if test data has target column
         has_test_target = target_column in test_data.columns
         
         if has_test_target:
@@ -76,7 +119,6 @@ class ModelTrainer:
         
         self.model.fit(X_train, y_train)
         
-        # Make predictions
         train_preds = self.model.predict(X_train)
         eval_preds = self.model.predict(X_test)
         
@@ -101,7 +143,6 @@ class ModelTrainer:
             test_predictions = pd.DataFrame({
                 'predictions': test_preds
             })
-            # Note: path for saving predictions should be passed from main.py
             print("Note: Test predictions are available in the model object.")
         
         # Get feature importance
@@ -109,6 +150,12 @@ class ModelTrainer:
             'feature': X_train.columns,
             'importance': self.model.feature_importances_
         }).sort_values('importance', ascending=False)
+        
+        if output_path:
+            print("\nGenerating learning curves...")
+            learning_curves_data = self.plot_learning_curves(X_train, y_train, output_path)
+            metrics['learning_curves'] = learning_curves_data
+            print(f"Learning curves have been saved to: {os.path.join(output_path, 'learning_curves.png')}")
         
         return metrics, feature_importance
         

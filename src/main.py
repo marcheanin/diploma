@@ -130,7 +130,7 @@ def train_model(train_data_path, test_data_path, target_column, research_path):
     
     print("\n=== Training and evaluating model ===")
     model_trainer = ModelTrainer()
-    metrics, feature_importance = model_trainer.train(train_data, test_data, target_column)
+    metrics, feature_importance = model_trainer.train(train_data, test_data, target_column, output_path=research_path)
     
     # Print metrics
     print("\nTraining Metrics:")
@@ -149,19 +149,19 @@ def train_model(train_data_path, test_data_path, target_column, research_path):
     return model_trainer
 
 def main():
-    # print("\n=== Processing Manual Cleaned Dataset ===")
-    # data_path = "datasets/credit-score-classification-manual-cleaned.csv"
-    # target_column = "Credit_Score"
+    print("\n=== Processing Diabets Dataset ===")
+    data_path = "datasets/diabetes.csv"
+    target_column = "Outcome"
 
-    print("\n=== Processing Credit Score Dataset ===")
-    train_path = "datasets/credit-score-classification/train.csv"
-    test_path = "datasets/credit-score-classification/test.csv"
-    target_column = "Credit_Score"
+    # print("\n=== Processing Credit Score Dataset ===")
+    # train_path = "datasets/credit-score-classification/train.csv"
+    # test_path = "datasets/credit-score-classification/test.csv"
+    # target_column = "Credit_Score"
 
     # Process data
     print("\n=== Processing data with KNN imputation ===")
     train_data_path, test_data_path, research_path = process_data(
-        train_path, test_path, target_column,
+        data_path, None, target_column,
         imputation_method='knn',
         n_neighbors=5
     )
