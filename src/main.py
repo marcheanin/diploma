@@ -83,9 +83,9 @@ def process_data(train_path, test_path, target_column, imputation_method='knn', 
     print_numeric_stats(train_data, "before encoding")
 
     # Encode categorical variables
-    train_data = preprocessor.encode(train_data, method='label')
+    train_data = preprocessor.encode(train_data, method='label', target_col=target_column)
     if test_data is not None:
-        test_data = preprocessor.encode(test_data, method='label')
+        test_data = preprocessor.encode(test_data, method='label', target_col=target_column)
     
     # Print numeric statistics after encoding
     print_numeric_stats(train_data, "after encoding")
@@ -149,19 +149,19 @@ def train_model(train_data_path, test_data_path, target_column, research_path):
     return model_trainer
 
 def main():
-    print("\n=== Processing Diabets Dataset ===")
-    data_path = "datasets/diabetes.csv"
-    target_column = "Outcome"
+    # print("\n=== Processing Diabets Dataset ===")
+    # data_path = "datasets/diabetes.csv"
+    # target_column = "Outcome"
 
-    # print("\n=== Processing Credit Score Dataset ===")
-    # train_path = "datasets/credit-score-classification/train.csv"
-    # test_path = "datasets/credit-score-classification/test.csv"
-    # target_column = "Credit_Score"
+    print("\n=== Processing Credit Score Dataset ===")
+    train_path = "datasets/credit-score-classification/train.csv"
+    test_path = "datasets/credit-score-classification/test.csv"
+    target_column = "Credit_Score"
 
     # Process data
     print("\n=== Processing data with KNN imputation ===")
     train_data_path, test_data_path, research_path = process_data(
-        data_path, None, target_column,
+        train_path, test_path, target_column,
         imputation_method='knn',
         n_neighbors=5
     )

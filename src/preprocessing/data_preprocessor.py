@@ -151,6 +151,11 @@ class DataPreprocessor:
         data = data.copy()
         
         for col in self.cat_columns:
+            # Пропускаем колонки, которых нет в данных
+            if col not in data.columns:
+                print(f"Column {col} not found in test data")
+                continue
+                
             if col not in self.encoders:
                 le = LabelEncoder()
                 le.fit(data[col])
@@ -161,7 +166,6 @@ class DataPreprocessor:
             encoded_values[mask] = self.encoders[col].transform(data[col][mask])
             data[col] = encoded_values.astype('int32')
         
-        self._get_column_types(data)
         return data
 
     def _target_encode(self, data, target_col):
@@ -207,8 +211,9 @@ class DataPreprocessor:
             method: str, encoding method ('onehot', 'label', or 'target')
             target_col: str, column name for target encoding
         """
-        self._get_column_types(data)
-        print("Before encoding:", self.cat_columns)
+        if not self.cat_columns:  # Определяем типы колонок только если это ещё не сделано
+            self._get_column_types(data)
+            print("Before encoding:", self.cat_columns)
         
         if method == 'onehot':
             return self._onehot_encode(data)
