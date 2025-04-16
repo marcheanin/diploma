@@ -50,3 +50,7 @@ datasets/*_processed_*.csv
 # System Files
 .DS_Store
 Thumbs.db 
+
+/research/*
+/results/*
+/datasets/*
