@@ -2,7 +2,6 @@ import pandas as pd
 import numpy as np
 from sklearn.impute import KNNImputer
 from sklearn.preprocessing import LabelEncoder, OneHotEncoder, OrdinalEncoder, StandardScaler
-from category_encoders import LeaveOneOutEncoder
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.decomposition import TruncatedSVD
 
@@ -32,6 +31,7 @@ class DataPreprocessor:
         self.lsa_vectorizer = None
         self.lsa_svd = None
         self.lsa_feature_names = None
+        self.medians = {}
 
     def _get_column_types(self, data):
         """Identify numeric and categorical columns in the dataset."""
@@ -39,6 +39,34 @@ class DataPreprocessor:
         self.cat_columns = data.select_dtypes(include=['object', 'category', 'string']).columns.tolist()
         print(f"Initial numeric columns: {self.numeric_columns}")
         print(f"Initial categorical columns: {self.cat_columns}")
+
+    def _impute_median(self, data):
+        """Impute missing values in numeric columns using the median."""
+        data = data.copy()
+        numeric_cols_present = [col for col in self.numeric_columns if col in data.columns]
+        print(f"Median Imputation: Processing columns {numeric_cols_present}")
+
+        if not self.medians:
+            print("Median Imputation: Calculating and storing medians.")
+            for col in numeric_cols_present:
+                median_val = data[col].median()
+                if pd.isna(median_val):
+                    median_val = 0
+                    print(f"Warning: Median for column '{col}' is NaN (all values might be missing). Filling NaNs with 0.")
+                self.medians[col] = median_val
+                data[col] = data[col].fillna(median_val)
+        else:
+            print("Median Imputation: Using stored medians.")
+            for col in numeric_cols_present:
+                stored_median = self.medians.get(col)
+                if stored_median is not None:
+                    data[col] = data[col].fillna(stored_median)
+                else:
+                    fallback_median = data[col].median()
+                    fallback_median = fallback_median if pd.notna(fallback_median) else 0
+                    print(f"Warning: No stored median for column '{col}'. Using calculated median ({fallback_median}) or 0 as fallback.")
+                    data[col] = data[col].fillna(fallback_median)
+        return data
 
     def impute_knn(self, data, n_neighbors=5):
         """Impute missing values in numeric columns using KNN."""
@@ -57,7 +85,7 @@ class DataPreprocessor:
     def impute_categorical(self, data):
         """Impute missing values in categorical columns using mode."""
         cat_cols_present = [col for col in self.cat_columns if col in data.columns]
-
+        print(f"Mode Imputation: Processing columns {cat_cols_present}")
         for col in cat_cols_present:
             data[col] = data[col].astype(str)
             modes = data[col].mode()
@@ -142,10 +170,8 @@ class DataPreprocessor:
              print("Warning: Categorical columns not identified. Call _get_column_types first.")
              return []
 
-        if method == 'target':
-            cols = [col for col in self.cat_columns if col != target_col and col in data.columns]
-        else:
-            cols = [col for col in self.cat_columns if col != target_col and col in data.columns]
+        cols = [col for col in self.cat_columns if col != target_col and col in data.columns]
+
         return cols
 
     def _onehot_encode(self, data, cols_to_encode):
@@ -159,19 +185,18 @@ class DataPreprocessor:
             print(f"OHE: Fitting on {len(cols_to_encode)} columns.")
             self.encoders[encoder_key] = OneHotEncoder(
                 handle_unknown='ignore',
-                sparse_output=False
+                sparse_output=False,
+                drop=None
             )
             self.encoders[encoder_key].fit(data[cols_to_encode].astype(str))
 
         print(f"OHE: Transforming {len(cols_to_encode)} columns.")
-        encoded = self.encoders[encoder_key].transform(data[cols_to_encode].astype(str))
-        new_cols = self.encoders[encoder_key].get_feature_names_out(cols_to_encode)
+        encoder = self.encoders[encoder_key]
+        encoded = encoder.transform(data[cols_to_encode].astype(str))
+        new_cols = encoder.get_feature_names_out(cols_to_encode)
         encoded_df = pd.DataFrame(encoded, columns=new_cols, index=data.index)
-
-        cols_to_keep = self.numeric_columns + [col for col in data.columns if col not in cols_to_encode and col not in self.numeric_columns]
-        cols_to_keep = [col for col in cols_to_keep if col in data.columns]
-
-        return pd.concat([data[cols_to_keep], encoded_df], axis=1)
+        data_remaining = data.drop(columns=cols_to_encode)
+        return pd.concat([data_remaining, encoded_df], axis=1)
 
     def _label_encode(self, data, cols_to_encode):
         """Encode specified columns using label encoding."""
@@ -215,40 +240,6 @@ class DataPreprocessor:
         data[cols_to_encode] = data[cols_to_encode].astype('int32')
         return data
 
-    def _leaveoneout_encode(self, data, cols_to_encode, target_col, sigma=0.05):
-        """Encode specified columns using LeaveOneOut encoding."""
-        if not cols_to_encode:
-             print("LeaveOneOut: No columns specified for encoding.")
-             return data
-        if target_col not in data.columns:
-             raise ValueError(f"Target column '{target_col}' not found for LeaveOneOut encoding.")
-
-        data = data.copy()
-        encoder_key = 'leaveoneout'
-        cols_to_encode_present = [c for c in cols_to_encode if c in data.columns]
-        if not cols_to_encode_present:
-            print(f"LeaveOneOut: None of the specified columns {cols_to_encode} found in data.")
-            return data
-
-        print(f"LeaveOneOut: Using {len(cols_to_encode_present)} columns: {cols_to_encode_present} with target '{target_col}', sigma={sigma}")
-        if encoder_key not in self.encoders:
-            encoder = LeaveOneOutEncoder(
-                cols=cols_to_encode_present,
-                sigma=sigma,
-                handle_unknown='value',
-                handle_missing='value'
-            )
-            encoder.fit(data[cols_to_encode_present], data[target_col])
-            self.encoders[encoder_key] = encoder
-        else:
-            print(f"LeaveOneOut: Using previously fitted encoder.")
-
-        if target_col in data.columns:
-            data = self.encoders[encoder_key].transform(data[cols_to_encode_present], data[target_col])
-        else:
-            data = self.encoders[encoder_key].transform(data[cols_to_encode_present])
-        return data
-
     def _categorical_to_texts(self, data, cols):
         """Transform categorical data rows into texts."""
         data = data.copy()
@@ -266,7 +257,6 @@ class DataPreprocessor:
             print("LSA: No categorical columns to encode found in data.")
             return data
         data = data.copy()
-        # Check fitted status by checking if vectorizer exists
         if self.lsa_vectorizer is None:
             print(f"LSA: Fitting on {len(cols_to_encode)} columns with n_components={n_components}")
             texts = self._categorical_to_texts(data, cols_to_encode)
@@ -278,7 +268,6 @@ class DataPreprocessor:
             print(f"LSA: Embeddings shape: {lsa_embeddings.shape}")
             print(f"LSA: Explained variance ratio sum: {self.lsa_svd.explained_variance_ratio_.sum():.4f}")
             self.lsa_feature_names = [f'LSA_{i+1}' for i in range(n_components)]
-            # No longer need self.lsa_fitted flag
         else:
             print(f"LSA: Transforming using fitted components on {len(cols_to_encode)} columns.")
             texts = self._categorical_to_texts(data, cols_to_encode)
@@ -287,7 +276,6 @@ class DataPreprocessor:
 
         lsa_df = pd.DataFrame(lsa_embeddings, columns=self.lsa_feature_names, index=data.index)
 
-        # Keep all columns NOT in cols_to_encode
         cols_to_keep = [col for col in data.columns if col not in cols_to_encode]
         result_df = pd.concat([data[cols_to_keep], lsa_df], axis=1)
         return result_df
@@ -295,18 +283,27 @@ class DataPreprocessor:
     def impute(self, data, method="knn", **kwargs):
         """
         Impute missing values using specified method.
+        Supported methods: 'knn', 'missforest', 'median'
         """
         if not self.numeric_columns and not self.cat_columns:
              self._get_column_types(data)
 
+        print(f"Starting imputation with method: {method}")
         if method == 'knn':
             data = self.impute_knn(data, **kwargs)
             data = self.impute_categorical(data)
-            return data
+            result = data
         elif method == 'missforest':
-             return self.impute_missforest(data, **kwargs)
+             result = self.impute_missforest(data, **kwargs)
+        elif method == 'median':
+            data = self._impute_median(data)
+            data = self.impute_categorical(data)
+            result = data
         else:
-            raise ValueError("Unknown imputation method. Use 'knn' or 'missforest'.")
+            raise ValueError(f"Unknown imputation method: {method}. Use 'knn', 'missforest', or 'median'.")
+
+        print(f"Finished imputation with method: {method}")
+        return result
 
     def encode(self, data, method='label', target_col=None, **kwargs):
         """
@@ -329,16 +326,11 @@ class DataPreprocessor:
             encoded_data = self._label_encode(data, active_cat_cols)
         elif method == 'ordinal':
              encoded_data = self._ordinal_encode(data, active_cat_cols)
-        elif method == 'leaveoneout':
-            if not target_col:
-                raise ValueError("Target column must be specified for LeaveOneOut Encoding")
-            sigma = kwargs.get('sigma', 0.05)
-            encoded_data = self._leaveoneout_encode(data, active_cat_cols, target_col, sigma=sigma)
         elif method == 'lsa':
             n_components = kwargs.get('n_components', 10)
             encoded_data = self._lsa_encode(data, active_cat_cols, n_components=n_components)
         else:
-            raise ValueError(f"Unknown encoding method: {method}. Use 'onehot', 'label', 'ordinal', 'leaveoneout', or 'lsa'.")
+            raise ValueError(f"Unknown encoding method: {method}. Use 'onehot', 'label', 'ordinal', or 'lsa'.")
 
         print(f"Finished encoding with method: {method}")
         return encoded_data 

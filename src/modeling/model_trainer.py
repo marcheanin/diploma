@@ -65,7 +65,7 @@ class ModelTrainer:
             }
         }
         
-    def train(self, train_data, test_data, target_column, output_path=None):
+    def train(self, train_data, test_data, target_column, output_path=None, plot_learning_curves=True):
         """
         Train the model using pre-split train and test data.
         If test data has no target column, uses part of train data for evaluation.
@@ -74,9 +74,11 @@ class ModelTrainer:
             train_data: pandas DataFrame, training data
             test_data: pandas DataFrame, test data
             target_column: str, name of target column
+            output_path: str, path to save plots and results
+            plot_learning_curves: bool, whether to generate and save learning curves
             
         Returns:
-            dict: Dictionary containing evaluation metrics
+            tuple: (metrics, feature_importance) - Dictionary with metrics and DataFrame with feature importance
         """
         has_test_target = target_column in test_data.columns
         
@@ -139,11 +141,17 @@ class ModelTrainer:
         # If we have separate test data without target, make predictions for it
         if not has_test_target:
             print("\nMaking predictions for test data without target...")
-            test_preds = self.model.predict(test_data)
-            test_predictions = pd.DataFrame({
-                'predictions': test_preds
-            })
-            print("Note: Test predictions are available in the model object.")
+            try:
+                 # Ensure test_data has the same columns as X_train
+                 test_preds = self.model.predict(test_data[X_train.columns])
+                 test_predictions = pd.DataFrame({
+                     'predictions': test_preds
+                 }, index=test_data.index) # Preserve original index if possible
+                 # Store predictions, maybe attach to metrics?
+                 metrics['test_predictions'] = test_predictions
+                 print(f"Test predictions generated (shape: {test_predictions.shape}).")
+            except Exception as e:
+                 print(f"Could not generate predictions for test data: {e}")
         
         # Get feature importance
         feature_importance = pd.DataFrame({
@@ -151,11 +159,18 @@ class ModelTrainer:
             'importance': self.model.feature_importances_
         }).sort_values('importance', ascending=False)
         
-        if output_path:
+        # --- Plot learning curves only if requested and path provided --- #
+        if output_path and plot_learning_curves:
             print("\nGenerating learning curves...")
-            learning_curves_data = self.plot_learning_curves(X_train, y_train, output_path)
-            metrics['learning_curves'] = learning_curves_data
-            print(f"Learning curves have been saved to: {os.path.join(output_path, 'learning_curves.png')}")
+            try:
+                learning_curves_data = self.plot_learning_curves(X_train, y_train, output_path)
+                metrics['learning_curves'] = learning_curves_data
+                print(f"Learning curves have been saved to: {os.path.join(output_path, 'learning_curves.png')}")
+            except Exception as e:
+                print(f"Could not generate learning curves: {e}")
+        elif not plot_learning_curves:
+             print("\nSkipping learning curve generation as requested.")
+        # --- End plotting --- #
         
         return metrics, feature_importance
         
