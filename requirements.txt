@@ -5,5 +5,8 @@ matplotlib>=3.9.4
 seaborn>=0.13.2
 scipy>=1.13.1
 joblib>=1.4.2
-category_encoders>=2.3.0
-missingpy>=0.2.0  # For MissForest imputation 
+category_encoders
+missingpy>=0.2.0  # For MissForest imputation
+imbalanced-learn>=0.12.0 # For resampling
+# Для эмбеддингов
+gensim>=4.3.2  # Для Word2Vec и FastText 

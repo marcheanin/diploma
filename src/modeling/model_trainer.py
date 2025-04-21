@@ -83,17 +83,13 @@ class ModelTrainer:
         has_test_target = target_column in test_data.columns
         
         if has_test_target:
-            # Use test data for evaluation
             X_train = train_data.drop(columns=[target_column])
             y_train = train_data[target_column]
             X_test = test_data.drop(columns=[target_column])
             y_test = test_data[target_column]
             
-            # Train on full training data
             eval_name = 'test'
         else:
-            print(f"\nTest data has no target column. Using {self.validation_size:.0%} of train data for evaluation.")
-            # Split training data for evaluation
             train_eval, valid_data = train_test_split(
                 train_data, 
                 test_size=self.validation_size,
@@ -101,7 +97,6 @@ class ModelTrainer:
                 stratify=train_data[target_column]
             )
             
-            # Prepare training and evaluation sets
             X_train = train_eval.drop(columns=[target_column])
             y_train = train_eval[target_column]
             X_test = valid_data.drop(columns=[target_column])
@@ -109,7 +104,6 @@ class ModelTrainer:
             
             eval_name = 'validation'
         
-        # Initialize and train the model
         self.model = RandomForestClassifier(
             n_estimators=100,
             max_depth=None,
@@ -124,7 +118,6 @@ class ModelTrainer:
         train_preds = self.model.predict(X_train)
         eval_preds = self.model.predict(X_test)
         
-        # Calculate metrics
         metrics = {
             'train': {
                 'accuracy': accuracy_score(y_train, train_preds),
@@ -138,39 +131,27 @@ class ModelTrainer:
             }
         }
         
-        # If we have separate test data without target, make predictions for it
         if not has_test_target:
-            print("\nMaking predictions for test data without target...")
             try:
-                 # Ensure test_data has the same columns as X_train
                  test_preds = self.model.predict(test_data[X_train.columns])
                  test_predictions = pd.DataFrame({
                      'predictions': test_preds
-                 }, index=test_data.index) # Preserve original index if possible
-                 # Store predictions, maybe attach to metrics?
+                 }, index=test_data.index)
                  metrics['test_predictions'] = test_predictions
-                 print(f"Test predictions generated (shape: {test_predictions.shape}).")
             except Exception as e:
-                 print(f"Could not generate predictions for test data: {e}")
+                 pass
         
-        # Get feature importance
         feature_importance = pd.DataFrame({
             'feature': X_train.columns,
             'importance': self.model.feature_importances_
         }).sort_values('importance', ascending=False)
         
-        # --- Plot learning curves only if requested and path provided --- #
         if output_path and plot_learning_curves:
-            print("\nGenerating learning curves...")
             try:
                 learning_curves_data = self.plot_learning_curves(X_train, y_train, output_path)
                 metrics['learning_curves'] = learning_curves_data
-                print(f"Learning curves have been saved to: {os.path.join(output_path, 'learning_curves.png')}")
             except Exception as e:
-                print(f"Could not generate learning curves: {e}")
-        elif not plot_learning_curves:
-             print("\nSkipping learning curve generation as requested.")
-        # --- End plotting --- #
+                pass
         
         return metrics, feature_importance
         

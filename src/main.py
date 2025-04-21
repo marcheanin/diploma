@@ -293,55 +293,17 @@ def main():
 
     # --- Запуск пайплайнов с разными энкодерами --- #
 
-    # # 1. KNN Imputation + Ordinal Encoding + No Resampling
-    # try:
-    #     print("\n=== Processing data with KNN + Ordinal Encoding + No Resampling ===")
-    #     train_ordinal_path, test_ordinal_path, research_ordinal_path = process_data(
-    #         train_path, test_path, target_column,
-    #         imputation_method='knn',
-    #         encoding_method='ordinal',
-    #         resampling_method='none', # <---- No Resampling
-    #         imputation_kwargs=knn_imputation_args,
-    #         encoding_kwargs={}
-    #     )
-    #     print("\n=== Training model on Ordinal encoded data (No Resampling) ===")
-    #     train_model(
-    #         train_ordinal_path, test_ordinal_path, target_column, 
-    #         research_ordinal_path, plot_learning_curves=generate_learning_curves # <<--- Передаем параметр
-    #     )
-    # except Exception as e:
-    #     print(f"Error processing/training with Ordinal Encoding: {e}")
-
-    # --- Удаляем пайплайн LeaveOneOut --- #
-    # # 2. KNN Imputation + LeaveOneOut Encoding + SMOTE Resampling
-    # try:
-    #     print("\n=== Processing data with KNN + LeaveOneOut Encoding + SMOTE ===")
-    #     train_loo_path, test_loo_path, research_loo_path = process_data(
-    #         train_path, test_path, target_column,
-    #         imputation_method='median',
-    #         encoding_method='leaveoneout', # <-- УДАЛЕНО
-    #         resampling_method='adasyn',
-    #         imputation_kwargs=knn_imputation_args,
-    #         encoding_kwargs={'sigma': loo_sigma}
-    #     )
-    #     print("\n=== Training model on LeaveOneOut encoded data (ADASYN) ===")
-    #     train_model(
-    #         train_loo_path, test_loo_path, target_column,
-    #         research_loo_path, plot_learning_curves=generate_learning_curves
-    #     )
-    # except Exception as e:
-    #     print(f"Error processing/training with LeaveOneOut Encoding + ADASYN: {e}")
+   
 
     # 3. KNN Imputation + LSA Encoding + No Resampling
     try:
         print("\n=== Processing data with KNN + LSA Encoding + No Resampling ===")
         train_lsa_path, test_lsa_path, research_lsa_path = process_data(
             train_path, test_path, target_column,
-            imputation_method='knn',
-            encoding_method='lsa',
-            resampling_method='none', # <---- No Resampling
-            imputation_kwargs=knn_imputation_args,
-            encoding_kwargs={'n_components': n_lsa_components}
+            imputation_method='median',
+            encoding_method='embedding',
+            resampling_method='smote', # <---- No Resampling
+            encoding_kwargs={'n_components': n_lsa_components, 'embedding_method': 'word2vec'}
         )
         print("\n=== Training model on LSA encoded data (No Resampling) ===")
         train_model(

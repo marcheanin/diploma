@@ -73,29 +73,21 @@ def analyze_target_correlations(data, target_col, output_path):
     import matplotlib.pyplot as plt
     import seaborn as sns
     
-    # Calculate correlations with target
     correlations = data.corr()[target_col].sort_values(ascending=False)
     
-    # Create a DataFrame with correlations
     corr_df = pd.DataFrame({
         'Feature': correlations.index,
         'Correlation': correlations.values
     })
     
-    # Save correlations to CSV
     corr_df.to_csv(f"{output_path}/feature_correlations.csv", index=False)
     
-    # Create correlation plot
     plt.figure(figsize=(12, 8))
     sns.barplot(data=corr_df, x='Correlation', y='Feature')
     plt.title(f'Feature Correlations with {target_col}')
     plt.tight_layout()
     plt.savefig(f"{output_path}/feature_correlations.png")
     plt.close()
-    
-    print(f"\nFeature correlations with {target_col} have been saved to:")
-    print(f"- CSV: {output_path}/feature_correlations.csv")
-    print(f"- Plot: {output_path}/feature_correlations.png")
 
 def save_model_results(metrics, feature_importance, output_path):
     """
@@ -108,14 +100,11 @@ def save_model_results(metrics, feature_importance, output_path):
     """
     import os
     
-    # Create model results directory
     model_path = os.path.join(output_path, 'model_results')
     os.makedirs(model_path, exist_ok=True)
     
-    # Determine which evaluation metrics we have
     eval_key = 'test' if 'test' in metrics else 'validation'
     
-    # Save metrics
     with open(os.path.join(model_path, 'metrics.txt'), 'w') as f:
         f.write("=== Training Metrics ===\n")
         f.write(f"Accuracy: {metrics['train']['accuracy']:.4f}\n")
@@ -129,5 +118,4 @@ def save_model_results(metrics, feature_importance, output_path):
         f.write(f"\nDetailed {eval_key.title()} Report:\n")
         f.write(metrics[eval_key]['detailed_report'])
     
-    # Save feature importance
     feature_importance.to_csv(os.path.join(model_path, 'feature_importance.csv'), index=False) 

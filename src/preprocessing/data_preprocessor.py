@@ -1,9 +1,21 @@
 import pandas as pd
 import numpy as np
+import sys
+import os
 from sklearn.impute import KNNImputer
 from sklearn.preprocessing import LabelEncoder, OneHotEncoder, OrdinalEncoder, StandardScaler
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.decomposition import TruncatedSVD
+
+# Optional imports for embeddings with improved error handling
+GENSIM_AVAILABLE = False
+try:
+    import gensim
+    from gensim.models import Word2Vec, FastText
+    GENSIM_AVAILABLE = True
+except ImportError as e:
+    print(f"Error importing gensim: {e}")
+    print("Gensim not available. Install with: pip install gensim")
 
 # Optional MissForest import with fallback to IterativeImputer
 try:
@@ -37,26 +49,20 @@ class DataPreprocessor:
         """Identify numeric and categorical columns in the dataset."""
         self.numeric_columns = data.select_dtypes(include=np.number).columns.tolist()
         self.cat_columns = data.select_dtypes(include=['object', 'category', 'string']).columns.tolist()
-        print(f"Initial numeric columns: {self.numeric_columns}")
-        print(f"Initial categorical columns: {self.cat_columns}")
 
     def _impute_median(self, data):
         """Impute missing values in numeric columns using the median."""
         data = data.copy()
         numeric_cols_present = [col for col in self.numeric_columns if col in data.columns]
-        print(f"Median Imputation: Processing columns {numeric_cols_present}")
 
         if not self.medians:
-            print("Median Imputation: Calculating and storing medians.")
             for col in numeric_cols_present:
                 median_val = data[col].median()
                 if pd.isna(median_val):
                     median_val = 0
-                    print(f"Warning: Median for column '{col}' is NaN (all values might be missing). Filling NaNs with 0.")
                 self.medians[col] = median_val
                 data[col] = data[col].fillna(median_val)
         else:
-            print("Median Imputation: Using stored medians.")
             for col in numeric_cols_present:
                 stored_median = self.medians.get(col)
                 if stored_median is not None:
@@ -64,7 +70,6 @@ class DataPreprocessor:
                 else:
                     fallback_median = data[col].median()
                     fallback_median = fallback_median if pd.notna(fallback_median) else 0
-                    print(f"Warning: No stored median for column '{col}'. Using calculated median ({fallback_median}) or 0 as fallback.")
                     data[col] = data[col].fillna(fallback_median)
         return data
 
@@ -85,7 +90,6 @@ class DataPreprocessor:
     def impute_categorical(self, data):
         """Impute missing values in categorical columns using mode."""
         cat_cols_present = [col for col in self.cat_columns if col in data.columns]
-        print(f"Mode Imputation: Processing columns {cat_cols_present}")
         for col in cat_cols_present:
             data[col] = data[col].astype(str)
             modes = data[col].mode()
@@ -152,26 +156,21 @@ class DataPreprocessor:
     def _label_encode_target(self, data, target_col):
         """Encode the target column specifically using LabelEncoder."""
         if target_col not in data.columns:
-            print(f"Target column '{target_col}' not found for label encoding.")
             return data
 
         if self.target_encoder_le is None:
-            print(f"Fitting target encoder for column: {target_col}")
             self.target_encoder_le = LabelEncoder()
             self.target_encoder_le.fit(data[target_col].astype(str))
 
-        print(f"Transforming target column: {target_col}")
         data[target_col] = self.target_encoder_le.transform(data[target_col].astype(str))
         return data
 
     def _get_active_cat_cols(self, data, target_col, method):
         """Get list of categorical columns for current encoding method, excluding target unless method is 'target'."""
         if not self.cat_columns:
-             print("Warning: Categorical columns not identified. Call _get_column_types first.")
              return []
 
         cols = [col for col in self.cat_columns if col != target_col and col in data.columns]
-
         return cols
 
     def _onehot_encode(self, data, cols_to_encode):
@@ -182,7 +181,6 @@ class DataPreprocessor:
         data = data.copy()
         encoder_key = 'onehot'
         if encoder_key not in self.encoders:
-            print(f"OHE: Fitting on {len(cols_to_encode)} columns.")
             self.encoders[encoder_key] = OneHotEncoder(
                 handle_unknown='ignore',
                 sparse_output=False,
@@ -190,7 +188,6 @@ class DataPreprocessor:
             )
             self.encoders[encoder_key].fit(data[cols_to_encode].astype(str))
 
-        print(f"OHE: Transforming {len(cols_to_encode)} columns.")
         encoder = self.encoders[encoder_key]
         encoded = encoder.transform(data[cols_to_encode].astype(str))
         new_cols = encoder.get_feature_names_out(cols_to_encode)
@@ -204,7 +201,6 @@ class DataPreprocessor:
             return data
 
         data = data.copy()
-        print(f"LabelEncoding: Processing {len(cols_to_encode)} columns.")
         for col in cols_to_encode:
             col_key = f'label_{col}'
             if col_key not in self.encoders:
@@ -228,7 +224,6 @@ class DataPreprocessor:
 
         data = data.copy()
         encoder_key = 'ordinal'
-        print(f"OrdinalEncoding: Processing {len(cols_to_encode)} columns.")
         if encoder_key not in self.encoders:
             self.encoders[encoder_key] = OrdinalEncoder(
                 handle_unknown='use_encoded_value',
@@ -254,22 +249,16 @@ class DataPreprocessor:
     def _lsa_encode(self, data, cols_to_encode, n_components):
         """Encode specified columns using LSA."""
         if not cols_to_encode:
-            print("LSA: No categorical columns to encode found in data.")
             return data
         data = data.copy()
         if self.lsa_vectorizer is None:
-            print(f"LSA: Fitting on {len(cols_to_encode)} columns with n_components={n_components}")
             texts = self._categorical_to_texts(data, cols_to_encode)
             self.lsa_vectorizer = TfidfVectorizer(ngram_range=(1, 2), min_df=5, max_df=0.5)
             term_doc_matrix = self.lsa_vectorizer.fit_transform(texts)
-            print(f"LSA: Vectorized matrix shape: {term_doc_matrix.shape}")
             self.lsa_svd = TruncatedSVD(n_components=n_components, random_state=42)
             lsa_embeddings = self.lsa_svd.fit_transform(term_doc_matrix)
-            print(f"LSA: Embeddings shape: {lsa_embeddings.shape}")
-            print(f"LSA: Explained variance ratio sum: {self.lsa_svd.explained_variance_ratio_.sum():.4f}")
             self.lsa_feature_names = [f'LSA_{i+1}' for i in range(n_components)]
         else:
-            print(f"LSA: Transforming using fitted components on {len(cols_to_encode)} columns.")
             texts = self._categorical_to_texts(data, cols_to_encode)
             term_doc_matrix = self.lsa_vectorizer.transform(texts)
             lsa_embeddings = self.lsa_svd.transform(term_doc_matrix)
@@ -280,6 +269,77 @@ class DataPreprocessor:
         result_df = pd.concat([data[cols_to_keep], lsa_df], axis=1)
         return result_df
 
+    def _embedding_encode(self, data, cols_to_encode, n_components=100, embedding_method='word2vec'):
+        """
+        Encode specified columns using different embedding methods
+        
+        Parameters:
+        -----------
+        data : pandas DataFrame
+            The input data to encode
+        cols_to_encode : list
+            List of categorical columns to encode
+        n_components : int
+            Dimension of embeddings or final dimension after reduction
+        embedding_method : str
+            Method to use: 'word2vec' or 'fasttext'
+        
+        Returns:
+        --------
+        DataFrame with embedded representations replacing categorical columns
+        """
+        if not cols_to_encode:
+            return data
+            
+        if not GENSIM_AVAILABLE:
+            raise ImportError("Gensim library is required for Word2Vec and FastText embeddings")
+            
+        data = data.copy()
+        texts = self._categorical_to_texts(data, cols_to_encode)
+        
+        tokenized_texts = [text.split() for text in texts]
+        
+        embed_key = f'{embedding_method}_embedder'
+        feature_key = f'{embedding_method}_feature_names'
+        
+        if embedding_method in ['word2vec', 'fasttext']:
+            if embed_key not in self.encoders:
+                if embedding_method == 'word2vec':
+                    model = Word2Vec(sentences=tokenized_texts, vector_size=n_components, 
+                                     window=5, min_count=1, workers=4)
+                else:  # fasttext
+                    model = FastText(sentences=tokenized_texts, vector_size=n_components,
+                                    window=5, min_count=1, workers=4)
+                
+                self.encoders[embed_key] = model
+            else:
+                model = self.encoders[embed_key]
+                
+            doc_vectors = []
+            for tokens in tokenized_texts:
+                token_vecs = []
+                for token in tokens:
+                    if token in model.wv:
+                        token_vecs.append(model.wv[token])
+                if token_vecs:
+                    doc_vectors.append(np.mean(token_vecs, axis=0))
+                else:
+                    doc_vectors.append(np.zeros(n_components))
+                    
+            embeddings = np.array(doc_vectors)
+            embed_feature_names = [f'{embedding_method}_{i+1}' for i in range(n_components)]
+        else:
+            raise ValueError(f"Unknown embedding method: {embedding_method}. Use 'word2vec' or 'fasttext'.")
+            
+        setattr(self, feature_key, embed_feature_names)
+        
+        embed_df = pd.DataFrame(embeddings, columns=embed_feature_names, index=data.index)
+        
+        cols_to_keep = [col for col in data.columns if col not in cols_to_encode]
+        result_df = pd.concat([data[cols_to_keep], embed_df], axis=1)
+        
+        return result_df
+
     def impute(self, data, method="knn", **kwargs):
         """
         Impute missing values using specified method.
@@ -288,7 +348,6 @@ class DataPreprocessor:
         if not self.numeric_columns and not self.cat_columns:
              self._get_column_types(data)
 
-        print(f"Starting imputation with method: {method}")
         if method == 'knn':
             data = self.impute_knn(data, **kwargs)
             data = self.impute_categorical(data)
@@ -302,7 +361,6 @@ class DataPreprocessor:
         else:
             raise ValueError(f"Unknown imputation method: {method}. Use 'knn', 'missforest', or 'median'.")
 
-        print(f"Finished imputation with method: {method}")
         return result
 
     def encode(self, data, method='label', target_col=None, **kwargs):
@@ -311,15 +369,12 @@ class DataPreprocessor:
         Target column is encoded separately using _label_encode_target if needed.
         """
         if not self.cat_columns and not self.numeric_columns:
-            print("Determining column types for encoding...")
             self._get_column_types(data)
 
         active_cat_cols = self._get_active_cat_cols(data, target_col, method)
         if not active_cat_cols and method != 'target':
-             print(f"Encoding method '{method}': No active categorical columns found to encode (excluding target).")
-             if method != 'target': return data
+             return data
 
-        print(f"Starting encoding method: {method} on columns: {active_cat_cols}")
         if method == 'onehot':
             encoded_data = self._onehot_encode(data, active_cat_cols)
         elif method == 'label':
@@ -329,8 +384,17 @@ class DataPreprocessor:
         elif method == 'lsa':
             n_components = kwargs.get('n_components', 10)
             encoded_data = self._lsa_encode(data, active_cat_cols, n_components=n_components)
+        elif method == 'embedding':
+            try:
+                n_components = kwargs.get('n_components', 100)
+                embedding_method = kwargs.get('embedding_method', 'word2vec')
+                encoded_data = self._embedding_encode(data, active_cat_cols, 
+                                                    n_components=n_components,
+                                                    embedding_method=embedding_method)
+            except ImportError as e:
+                n_components = kwargs.get('n_components', 10)
+                encoded_data = self._lsa_encode(data, active_cat_cols, n_components=n_components)
         else:
-            raise ValueError(f"Unknown encoding method: {method}. Use 'onehot', 'label', 'ordinal', or 'lsa'.")
+            raise ValueError(f"Unknown encoding method: {method}. Use 'onehot', 'label', 'ordinal', 'lsa', or 'embedding'.")
 
-        print(f"Finished encoding with method: {method}")
         return encoded_data 
