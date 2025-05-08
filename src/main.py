@@ -12,6 +12,7 @@ from utils.data_analysis import (
     analyze_target_correlations,
     save_model_results
 )
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
 
 def get_dataset_name(path):
     """
@@ -28,7 +29,9 @@ def get_dataset_name(path):
 def process_data(train_path, test_path, target_column,
                  imputation_method='knn', encoding_method='label',
                  resampling_method='none',
-                 imputation_kwargs=None, encoding_kwargs=None):
+                 scaling_method='none',
+                 imputation_kwargs=None, encoding_kwargs=None,
+                 scaling_kwargs=None):
     """
     Process data using specified imputation, encoding, and resampling methods.
     
@@ -39,8 +42,10 @@ def process_data(train_path, test_path, target_column,
         imputation_method: str, 'knn' or 'missforest'
         encoding_method: str, 'onehot', 'label', 'ordinal', 'leaveoneout', 'lsa'
         resampling_method: str, 'none', 'oversample', 'undersample', 'smote', 'adasyn'
+        scaling_method: str, 'none', 'standard', 'minmax'
         imputation_kwargs: dict, keyword arguments for the imputation method (e.g., {'n_neighbors': 5})
         encoding_kwargs: dict, keyword arguments for the encoding method (e.g., {'sigma': 0.05, 'n_components': 10})
+        scaling_kwargs: dict, keyword arguments for the scaling method (e.g., {'feature_range': (0, 1)})
         
     Returns:
         tuple: (train_data_path, test_data_path, research_path)
@@ -48,11 +53,17 @@ def process_data(train_path, test_path, target_column,
     # Инициализируем пустые словари, если аргументы не переданы
     imputation_kwargs = imputation_kwargs or {}
     encoding_kwargs = encoding_kwargs or {}
+    scaling_kwargs = scaling_kwargs or {}
     
     # Get dataset name and create paths
     dataset_name = get_dataset_name(train_path)
-    # Добавляем метод кодирования и метод ресемплинга в путь для research и results, чтобы различать эксперименты
-    experiment_name = f"{imputation_method}_{encoding_method}_{resampling_method}"
+    
+    # Update experiment_name to include scaling_method
+    experiment_name_parts = [imputation_method, encoding_method, resampling_method]
+    if scaling_method != 'none':
+        experiment_name_parts.append(scaling_method)
+    experiment_name = "_".join(experiment_name_parts)
+    
     results_path = os.path.join('results', dataset_name, experiment_name)
     research_path = os.path.join("research", dataset_name, experiment_name)
     
@@ -171,10 +182,81 @@ def process_data(train_path, test_path, target_column,
         print("Resampling method is 'none'. Skipping resampling step.")
     # --- Конец Ресемплинга --- #
 
+    # 5. Optional Feature Scaling
+    # Scaler is fit on resampled training features and applied to resampled training features and test features.
+    if scaling_method != 'none' and scaling_method in ['standard', 'minmax']:
+        print(f"\n=== Applying {scaling_method} scaling ===")
+        
+        if target_column not in train_data.columns:
+            print(f"CRITICAL WARNING: Target column '{target_column}' not found in train_data before scaling. Skipping scaling.")
+        else:
+            X_train_features = train_data.drop(columns=[target_column])
+            y_train_target = train_data[target_column]
+
+            scaler_instance = None
+            if scaling_method == 'standard':
+                scaler_instance = StandardScaler(**scaling_kwargs)
+            elif scaling_method == 'minmax':
+                scaler_instance = MinMaxScaler(**scaling_kwargs)
+
+            if scaler_instance:
+                try:
+                    # Fit and transform training features
+                    scaled_X_train_values = scaler_instance.fit_transform(X_train_features)
+                    scaled_X_train_df = pd.DataFrame(scaled_X_train_values, columns=X_train_features.columns, index=X_train_features.index)
+                    
+                    train_data = pd.concat([scaled_X_train_df, y_train_target], axis=1)
+                    print(f"Training data features scaled using {scaling_method}.")
+
+                    if test_data is not None:
+                        X_test_features_original = test_data.drop(columns=[target_column], errors='ignore')
+                        y_test_target_original = test_data[target_column] if target_column in test_data.columns else None
+                        
+                        # Align test columns with train columns scaler was fit on
+                        # Only try to scale columns that were present during fit
+                        cols_to_scale_in_test = [col for col in X_train_features.columns if col in X_test_features_original.columns]
+                        
+                        if not cols_to_scale_in_test:
+                             print("Warning: No common features to scale found in test data matching training data features. Test data remains unscaled.")
+                        elif len(cols_to_scale_in_test) != len(X_train_features.columns):
+                            print("Warning: Test data feature set does not exactly match training data feature set for scaling. Scaling subset of columns. Ensure this is intended.")
+                            # Potentially create a subset of X_test_features to scale
+                            X_test_subset_to_scale = X_test_features_original[cols_to_scale_in_test]
+                            scaled_X_test_subset_values = scaler_instance.transform(X_test_subset_to_scale)
+                            scaled_X_test_subset_df = pd.DataFrame(scaled_X_test_subset_values, columns=cols_to_scale_in_test, index=X_test_subset_to_scale.index)
+                            
+                            # Update only the scaled columns in a copy of original test features
+                            X_test_features_updated = X_test_features_original.copy()
+                            for col in cols_to_scale_in_test:
+                                X_test_features_updated[col] = scaled_X_test_subset_df[col]
+
+                            if y_test_target_original is not None:
+                                test_data = pd.concat([X_test_features_updated, y_test_target_original], axis=1)
+                            else:
+                                test_data = X_test_features_updated
+                            print(f"Subset of test data features scaled using {scaling_method}.")
+                        else: # Columns match perfectly
+                            scaled_X_test_values = scaler_instance.transform(X_test_features_original[X_train_features.columns]) # Ensure order
+                            scaled_X_test_df = pd.DataFrame(scaled_X_test_values, columns=X_train_features.columns, index=X_test_features_original.index)
+
+                            if y_test_target_original is not None:
+                                test_data = pd.concat([scaled_X_test_df, y_test_target_original], axis=1)
+                            else:
+                                test_data = scaled_X_test_df
+                            print(f"Test data features scaled using {scaling_method}.")
+                except Exception as e:
+                    print(f"Error during scaling: {e}. Skipping scaling for this dataset part.")
+    elif scaling_method != 'none':
+        print(f"Warning: Unknown scaling method '{scaling_method}' provided. Scaling will be skipped.")
+    # --- End Scaling ---
+
     # Save processed data
-    # Используем experiment_name в имени файла
-    # train_data now holds the fully processed training data
-    output_suffix = f"_processed_{imputation_method}_{encoding_method}_{resampling_method}" 
+    # Update output_suffix to include scaling_method
+    filename_suffix_parts = [imputation_method, encoding_method, resampling_method]
+    if scaling_method != 'none':
+        filename_suffix_parts.append(scaling_method)
+    output_suffix = f"_processed_{'_'.join(filename_suffix_parts)}"
+    
     train_data_path = os.path.join(results_path, f'train{output_suffix}.csv')
     test_data_path = os.path.join(results_path, f'test{output_suffix}.csv')
     
@@ -314,7 +396,8 @@ def main():
             train_path, test_path, target_column,
             imputation_method='median',
             encoding_method='embedding',
-            resampling_method='smote', # <---- No Resampling
+            resampling_method='smote', 
+            scaling_method='standard',
             encoding_kwargs={'n_components': n_lsa_components, 'embedding_method': 'word2vec'}
         )
         print("\n=== Training model on LSA encoded data (No Resampling) ===")
