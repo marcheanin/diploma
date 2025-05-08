@@ -80,9 +80,6 @@ def process_data(train_path, test_path, target_column,
         print(f"Warning: Target column '{target_column}' not found, cannot check distribution.")
     # --- Конец проверки --- #
 
-    # Print target distribution (существующий вызов, можно оставить или убрать, если проверка выше достаточна)
-    # print_target_distribution(train_data, target_col=target_column)
-
     # Print missing values statistics
     print("\n=== Missing values statistics before imputation ===")
     print_missing_summary(train_data, "train dataset")
@@ -92,7 +89,7 @@ def process_data(train_path, test_path, target_column,
     # Preprocess data
     preprocessor = DataPreprocessor()
     
-    # Impute missing values using imputation_kwargs
+    # 1. Impute missing values using imputation_kwargs
     print(f"\nUsing {imputation_method} for imputation with args: {imputation_kwargs}...")
     train_data = preprocessor.impute(train_data, method=imputation_method, **imputation_kwargs) 
     if test_data is not None:
@@ -104,19 +101,51 @@ def process_data(train_path, test_path, target_column,
     if test_data is not None:
         print_missing_summary(test_data, "test dataset")
 
-    # Print numeric statistics before encoding
-    print_numeric_stats(train_data, "before encoding")
+    # 2. Outlier Removal (on imputed train_data)
+    print("\n=== Outlier Removal (on imputed train data) ===")
+    train_data_before_outliers = train_data.copy() # Keep a copy in case outlier removal fails
+    try:
+        outlier_remover = OutlierRemover(contamination=0.05) # Contamination is hardcoded as in original
+        
+        # Features for outlier removal: current train_data without target
+        features_for_removal = train_data.drop(columns=[target_column], errors='ignore')
+        
+        # Store original target series to reattach after filtering by index
+        target_series_for_reconstruction = None
+        if target_column in train_data.columns:
+            target_series_for_reconstruction = train_data[target_column]
 
-    # Encode categorical features using encoding_kwargs
+        cleaned_features = outlier_remover.remove_outliers(features_for_removal)
+        
+        # Reconstruct train_data by attaching the target to the cleaned_features
+        if target_series_for_reconstruction is not None and target_column in train_data.columns:
+            # Align using the index of cleaned_features
+            aligned_target = target_series_for_reconstruction.loc[cleaned_features.index]
+            train_data = pd.concat([cleaned_features, aligned_target.rename(target_column)], axis=1)
+        else:
+            train_data = cleaned_features # If no target or target was not in train_data initially
+            
+        print(f"Train dataset size after outlier removal: {train_data.shape}")
+    except Exception as e:
+         print(f"Could not remove outliers (imputation: {imputation_method}): {e}")
+         print("Skipping outlier removal.")
+         train_data = train_data_before_outliers # Revert to data before outlier removal attempt
+    # --- End Outlier Removal ---
+
+    # Print numeric statistics before encoding (after imputation and outlier removal)
+    print_numeric_stats(train_data, "before encoding (after imputation, outlier removal)")
+
+    # 3. Encode categorical features using encoding_kwargs
+    # train_data is now after imputation and outlier removal
+    # test_data is after imputation
     train_data = preprocessor.encode(train_data, method=encoding_method, target_col=target_column, **encoding_kwargs)
     if test_data is not None:
         test_data = preprocessor.encode(test_data, method=encoding_method, target_col=target_column, **encoding_kwargs)
     
     # Print numeric statistics after encoding
-    # Примечание: Статистика будет включать не закодированную целевую переменную, если она осталась
     print_numeric_stats(train_data, "after encoding")
 
-    # --- Ресемплинг (только для train_data) --- #
+    # 4. Resampling (only for train_data, after imputation, outlier removal, and encoding)
     if resampling_method != 'none':
         if target_column in train_data.columns:
             # Убедимся, что целевая колонка числовая для imblearn
@@ -142,29 +171,14 @@ def process_data(train_path, test_path, target_column,
         print("Resampling method is 'none'. Skipping resampling step.")
     # --- Конец Ресемплинга --- #
 
-    # --- Удаление выбросов (применяется к train_data, которая может быть ресемплирована) --- #
-    print("\n=== Outlier Removal (on potentially resampled train data) ===")
-    try:
-        outlier_remover = OutlierRemover(contamination=0.05)
-        # OutlierRemover работает с числовыми данными, к этому моменту все должно быть числовым
-        train_data_clean = outlier_remover.remove_outliers(train_data.drop(columns=[target_column], errors='ignore'))
-        # Добавляем целевую колонку обратно, если она была удалена для remove_outliers
-        if target_column in train_data.columns:
-             train_data_clean[target_column] = train_data.loc[train_data_clean.index, target_column]
-        print(f"Train dataset size after outlier removal: {train_data_clean.shape}")
-    except Exception as e:
-         print(f"Could not remove outliers (encoding: {encoding_method}, resampling: {resampling_method}): {e}")
-         print("Skipping outlier removal.")
-         train_data_clean = train_data # Используем данные без удаления выбросов
-    # --- Конец Удаления выбросов --- #
-
     # Save processed data
     # Используем experiment_name в имени файла
-    output_suffix = f"_processed_{encoding_method}_{resampling_method}" 
+    # train_data now holds the fully processed training data
+    output_suffix = f"_processed_{imputation_method}_{encoding_method}_{resampling_method}" 
     train_data_path = os.path.join(results_path, f'train{output_suffix}.csv')
     test_data_path = os.path.join(results_path, f'test{output_suffix}.csv')
     
-    train_data_clean.to_csv(train_data_path, index=False)
+    train_data.to_csv(train_data_path, index=False) # Use the final train_data
     if test_data is not None:
         test_data.to_csv(test_data_path, index=False)
     else: # Если test_data не было (например, при сплите), создаем пустой файл пути
@@ -172,18 +186,16 @@ def process_data(train_path, test_path, target_column,
 
     # Analyze and save feature correlations with target
     print("\n=== Analyzing feature correlations with target variable ===")
-    # Примечание: analyze_target_correlations теперь может выдать ошибку,
-    # если целевая переменная не является числовой. 
-    # Нужно либо изменить эту функцию, либо убедиться, что цель числовая ДО ее вызова.
-    if target_column in train_data_clean.columns:
+    # train_data now holds the fully processed training data
+    if target_column in train_data.columns:
         # Добавим проверку типа перед вызовом
-        if pd.api.types.is_numeric_dtype(train_data_clean[target_column]):
-            analyze_target_correlations(train_data_clean, target_column, research_path)
+        if pd.api.types.is_numeric_dtype(train_data[target_column]):
+            analyze_target_correlations(train_data, target_column, research_path)
         else:
             print(f"Target column '{target_column}' is not numeric. Skipping correlation analysis.")
             # Опционально: можно попытаться закодировать цель здесь, если нужно
             # try:
-            #     temp_train_data = preprocessor._label_encode_target(train_data_clean.copy(), target_column)
+            #     temp_train_data = preprocessor._label_encode_target(train_data.copy(), target_column)
             #     analyze_target_correlations(temp_train_data, target_column, research_path)
             # except Exception as corr_err:
             #     print(f"Could not encode target for correlation analysis: {corr_err}")
