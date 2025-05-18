@@ -6,25 +6,27 @@ from sklearn.impute import KNNImputer
 from sklearn.preprocessing import LabelEncoder, OneHotEncoder, OrdinalEncoder, StandardScaler
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.decomposition import TruncatedSVD
+from gensim.models import Word2Vec
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.experimental import enable_iterative_imputer
+from sklearn.impute import IterativeImputer
+from category_encoders import LeaveOneOutEncoder
 
 # Optional imports for embeddings with improved error handling
 GENSIM_AVAILABLE = False
 try:
     import gensim
-    from gensim.models import Word2Vec, FastText
+    from gensim.models import FastText
     GENSIM_AVAILABLE = True
 except ImportError as e:
     print(f"Error importing gensim: {e}")
     print("Gensim not available. Install with: pip install gensim")
 
-# Optional MissForest import with fallback to IterativeImputer
+# Conditional import for MissForest
 try:
     from missingpy import MissForest
     MISSFOREST_AVAILABLE = True
 except ImportError:
-    from sklearn.experimental import enable_iterative_imputer
-    from sklearn.impute import IterativeImputer
-    from sklearn.ensemble import RandomForestRegressor
     MISSFOREST_AVAILABLE = False
     print("MissForest not available. Will use IterativeImputer as fallback when missforest method is selected.")
 
@@ -44,6 +46,11 @@ class DataPreprocessor:
         self.lsa_svd = None
         self.lsa_feature_names = None
         self.medians = {}
+        self.lsa_components = {}
+        self.word2vec_models = {}
+        self.word2vec_dims = 50
+        self.imputed_medians = {}
+        self.imputed_modes = {}
 
     def _get_column_types(self, data):
         """Identify numeric and categorical columns in the dataset."""
@@ -97,8 +104,10 @@ class DataPreprocessor:
                 data[col] = data[col].replace({"nan": np.nan, "None": np.nan, "": np.nan})
                 mode_val = modes[0]
                 data[col] = data[col].fillna(mode_val)
+                self.imputed_modes[col] = mode_val
             else:
                 data[col] = data[col].fillna("Unknown")
+                self.imputed_modes[col] = "Unknown"
         return data
 
     def impute_missforest(self, data, max_iter=10, n_estimators=100, random_state=42):
@@ -163,6 +172,8 @@ class DataPreprocessor:
             self.target_encoder_le.fit(data[target_col].astype(str))
 
         data[target_col] = self.target_encoder_le.transform(data[target_col].astype(str))
+        self.encoders[target_col] = self.target_encoder_le
+        # print(f"Target column '{target_col}' was label encoded.")
         return data
 
     def _get_active_cat_cols(self, data, target_col, method):
@@ -308,7 +319,7 @@ class DataPreprocessor:
                     model = Word2Vec(sentences=tokenized_texts, vector_size=n_components, 
                                      window=5, min_count=1, workers=4)
                 else:  # fasttext
-                    model = FastText(sentences=tokenized_texts, vector_size=n_components,
+                    model = gensim.models.FastText(sentences=tokenized_texts, vector_size=n_components,
                                     window=5, min_count=1, workers=4)
                 
                 self.encoders[embed_key] = model
@@ -340,28 +351,96 @@ class DataPreprocessor:
         
         return result_df
 
-    def impute(self, data, method="knn", **kwargs):
-        """
-        Impute missing values using specified method.
-        Supported methods: 'knn', 'missforest', 'median'
-        """
-        if not self.numeric_columns and not self.cat_columns:
-             self._get_column_types(data)
-
-        if method == 'knn':
-            data = self.impute_knn(data, **kwargs)
-            data = self.impute_categorical(data)
-            result = data
-        elif method == 'missforest':
-             result = self.impute_missforest(data, **kwargs)
-        elif method == 'median':
-            data = self._impute_median(data)
-            data = self.impute_categorical(data)
-            result = data
+    def _impute_categorical_with_mode(self, data, column):
+        mode_val = data[column].mode()
+        if not mode_val.empty:
+            mode = mode_val[0]
+            data[column] = data[column].fillna(mode)
+            self.imputed_modes[column] = mode
+            # print(f"Imputed categorical column '{column}' with mode '{mode}'.")
         else:
-            raise ValueError(f"Unknown imputation method: {method}. Use 'knn', 'missforest', or 'median'.")
+            fallback_mode = "__MISSING__"
+            data[column] = data[column].fillna(fallback_mode)
+            self.imputed_modes[column] = fallback_mode
+            # print(f"Imputed categorical column '{column}' with fallback '{fallback_mode}'.")
+        return data
 
-        return result
+    def _impute_numerical_with_median(self, data, column):
+        median = data[column].median()
+        data[column] = data[column].fillna(median)
+        self.imputed_medians[column] = median
+        # print(f"Imputed numerical column '{column}' with median '{median}'.")
+        return data
+
+    def impute(self, data, method='knn', **kwargs):
+        # print(f"Starting imputation with method: {method}")
+        data_imputed = data.copy()
+        numeric_cols = data_imputed.select_dtypes(include=np.number).columns.tolist()
+        categorical_cols = data_imputed.select_dtypes(exclude=np.number).columns.tolist()
+
+        for col in categorical_cols:
+            if data_imputed[col].isnull().any():
+                data_imputed = self._impute_categorical_with_mode(data_imputed, col)
+        
+        numeric_cols_with_na = [col for col in numeric_cols if data_imputed[col].isnull().any()]
+        if not numeric_cols_with_na:
+            # print("No numerical columns with NAs to impute.")
+            pass
+        elif method == 'median':
+            # print(f"Applying median imputation to numeric columns: {numeric_cols_with_na}")
+            for col in numeric_cols_with_na:
+                data_imputed = self._impute_numerical_with_median(data_imputed, col)
+        elif method == 'knn':
+            # print(f"Applying KNNImputer to numeric columns: {numeric_cols_with_na}")
+            n_neighbors = kwargs.get('n_neighbors', 5)
+            imputer_knn = KNNImputer(n_neighbors=n_neighbors)
+            data_imputed[numeric_cols_with_na] = imputer_knn.fit_transform(data_imputed[numeric_cols_with_na])
+        elif method == 'missforest':
+            if MISSFOREST_AVAILABLE:
+                # print(f"Applying MissForest. This might take a while...")
+                mf_input_data = data_imputed.copy()
+                for col in mf_input_data.columns:
+                    if mf_input_data[col].dtype == 'object':
+                        mf_input_data[col] = pd.Categorical(mf_input_data[col])
+                if not mf_input_data.isnull().any().any():
+                    # print("No NAs remaining for MissForest after categorical mode imputation.")
+                    pass
+                else:
+                    try:
+                        imputer_mf = MissForest(random_state=42, **kwargs.get('missforest_kwargs', {}))
+                        imputed_values = imputer_mf.fit_transform(mf_input_data)
+                        data_imputed = pd.DataFrame(imputed_values, columns=mf_input_data.columns)
+                        for col in data.columns: 
+                            if col in data_imputed.columns and data[col].dtype != data_imputed[col].dtype:
+                                try:
+                                    data_imputed[col] = data_imputed[col].astype(data[col].dtype, errors='ignore')
+                                    if pd.api.types.is_numeric_dtype(data[col]) and not pd.api.types.is_numeric_dtype(data_imputed[col]):
+                                         data_imputed[col] = pd.to_numeric(data_imputed[col], errors='coerce') # Coerce will turn problematic to NaN
+                                except Exception as e_dtype:
+                                    print(f"Warning: Could not restore dtype for column {col} after MissForest: {e_dtype}")
+                        # print("MissForest imputation completed.")
+                    except Exception as e_mf:
+                        print(f"Error during MissForest imputation: {e_mf}.")
+                        numeric_still_na = [nc for nc in numeric_cols if data_imputed[nc].isnull().any()]
+                        if numeric_still_na:
+                            # print("MissForest failed, falling back to IterativeImputer for remaining numeric columns.")
+                            iter_imputer = IterativeImputer(estimator=RandomForestRegressor(random_state=42),random_state=42,**kwargs.get('iterativeimputer_kwargs', {}))
+                            data_imputed[numeric_still_na] = iter_imputer.fit_transform(data_imputed[numeric_still_na])
+            else: 
+                # print("MissForest not available, using IterativeImputer for numeric columns with NAs.")
+                if numeric_cols_with_na:
+                    iter_imputer = IterativeImputer(estimator=RandomForestRegressor(random_state=42),random_state=42,**kwargs.get('iterativeimputer_kwargs', {}))
+                    data_imputed[numeric_cols_with_na] = iter_imputer.fit_transform(data_imputed[numeric_cols_with_na])
+        elif method not in ['median', 'knn', 'missforest']:
+            raise ValueError(f"Unknown imputation method: {method}")
+        
+        if data_imputed.isnull().any().any():
+            print("Warning: NAs still present after imputation process.")
+            print(data_imputed.isnull().sum()[data_imputed.isnull().sum() > 0])
+        else:
+            # print("Imputation completed. No NAs remaining.")
+            pass
+        return data_imputed
 
     def encode(self, data, method='label', target_col=None, **kwargs):
         """
@@ -385,16 +464,118 @@ class DataPreprocessor:
             n_components = kwargs.get('n_components', 10)
             encoded_data = self._lsa_encode(data, active_cat_cols, n_components=n_components)
         elif method == 'embedding':
-            try:
-                n_components = kwargs.get('n_components', 100)
-                embedding_method = kwargs.get('embedding_method', 'word2vec')
-                encoded_data = self._embedding_encode(data, active_cat_cols, 
-                                                    n_components=n_components,
-                                                    embedding_method=embedding_method)
-            except ImportError as e:
-                n_components = kwargs.get('n_components', 10)
-                encoded_data = self._lsa_encode(data, active_cat_cols, n_components=n_components)
+            if not GENSIM_AVAILABLE:
+                print("Word2Vec encoding skipped: Gensim library not available.")
+                return encoded_data # Return data as is if Word2Vec can't run
+
+            self.word2vec_dims = kwargs.get('embedding_dim', self.word2vec_dims) # Default is in __init__
+            if self.word2vec_dims <= 0:
+                print("Word2Vec encoding skipped: embedding_dim must be > 0.")
+                return encoded_data
+
+            # print(f"Applying Word2Vec with embedding_dim={self.word2vec_dims} for columns: {active_cat_cols}")
+            
+            processed_cols_w2v = [] # Keep track of columns successfully processed by Word2Vec
+            for col in active_cat_cols:
+                # Ensure column data is a list of lists of strings for Word2Vec
+                # Each category value is treated as a single 'word' in its own 'sentence'
+                # Convert to string and fill NA to handle all cases before .apply
+                sentences = encoded_data[col].astype(str).fillna('__NULL_W2V__').apply(lambda x: [x]).tolist()
+                
+                if not sentences: # Should not happen if active_cat_cols is not empty, but as a safeguard
+                    print(f"Skipping Word2Vec for column '{col}' due to no data/sentences.")
+                    continue
+
+                # Train Word2Vec model for the current column
+                # window=1 as each category is its own context. min_count=1 to include all categories.
+                # sg=1 for Skip-gram model, often better for infrequent words (categories)
+                try:
+                    w2v_model = Word2Vec(sentences=sentences, vector_size=self.word2vec_dims, window=1, min_count=1, workers=4, sg=1, seed=42)
+                    self.word2vec_models[col] = w2v_model
+                    
+                    # Create embedding features for the column
+                    embedding_vectors = []
+                    for val_list in sentences: # val_list is like ['category_value']
+                        word = val_list[0]
+                        if word in w2v_model.wv:
+                            embedding_vectors.append(w2v_model.wv[word])
+                        else:
+                            # This case should be rare with min_count=1 if word was in training sentences
+                            # and not '__NULL_W2V__' if all values were null.
+                            # If __NULL_W2V__ was the only word, it gets an embedding. Else, zero vector for safety.
+                            embedding_vectors.append(np.zeros(self.word2vec_dims))
+                    
+                    embedding_df = pd.DataFrame(embedding_vectors, index=encoded_data.index)
+                    embedding_df.columns = [f'{col}_w2v_{i}' for i in range(self.word2vec_dims)]
+                    
+                    # Concatenate new embedding features and mark original column for dropping
+                    encoded_data = pd.concat([encoded_data, embedding_df], axis=1)
+                    processed_cols_w2v.append(col)
+                except Exception as e_w2v:
+                    print(f"Error training or applying Word2Vec for column '{col}': {e_w2v}. Column will be skipped.")
+            
+            # Drop original categorical columns that were successfully processed by Word2Vec
+            if processed_cols_w2v:
+                encoded_data = encoded_data.drop(columns=processed_cols_w2v)
+                print(f"Dropped original Word2Vec processed columns: {processed_cols_w2v}")
+        elif method == 'leaveoneout':
+            if target_col is None or target_col not in data.columns:
+                raise ValueError("LeaveOneOutEncoder requires a target column specified and present in data.")
+            
+            temp_target_series = data[target_col]
+            if not pd.api.types.is_numeric_dtype(temp_target_series):
+                print(f"Target column '{target_col}' for LOOE is categorical. Applying temporary LabelEncoding.")
+                le_target = LabelEncoder()
+                temp_target_series = le_target.fit_transform(temp_target_series)
+
+            looe = LeaveOneOutEncoder(cols=active_cat_cols, sigma=kwargs.get('sigma', 0.05))
+            encoded_data = pd.DataFrame(looe.fit_transform(data[active_cat_cols], temp_target_series), columns=active_cat_cols)
+            self.encoders['leaveoneout'] = looe
+        elif method == 'word2vec':
+            if not GENSIM_AVAILABLE:
+                print("Word2Vec encoding skipped: Gensim library not available.")
+                return encoded_data
+
+            self.word2vec_dims = kwargs.get('embedding_dim', self.word2vec_dims)
+            if self.word2vec_dims <= 0:
+                print("Word2Vec encoding skipped: embedding_dim must be > 0.")
+                return encoded_data
+
+            if not active_cat_cols:
+                print("Word2Vec skipped: No categorical columns identified for encoding.")
+                return encoded_data
+
+            # print(f"Applying Word2Vec with embedding_dim={self.word2vec_dims} for columns: {active_cat_cols}")
+            
+            processed_cols_w2v = []
+            for col in active_cat_cols:
+                sentences = encoded_data[col].astype(str).fillna('__NULL_W2V__').apply(lambda x: [x]).tolist()
+                
+                if not sentences:
+                    print(f"Skipping Word2Vec for column '{col}' due to no data/sentences after processing.")
+                    continue
+                try:
+                    w2v_model = Word2Vec(sentences=sentences, vector_size=self.word2vec_dims, window=1, min_count=1, workers=4, sg=1, seed=42)
+                    self.word2vec_models[col] = w2v_model
+                    embedding_vectors = []
+                    for val_list in sentences:
+                        word = val_list[0]
+                        if word in w2v_model.wv:
+                            embedding_vectors.append(w2v_model.wv[word])
+                        else:
+                            embedding_vectors.append(np.zeros(self.word2vec_dims))
+                    
+                    embedding_df = pd.DataFrame(embedding_vectors, index=encoded_data.index)
+                    embedding_df.columns = [f'{col}_w2v_{i}' for i in range(self.word2vec_dims)]
+                    encoded_data = pd.concat([encoded_data, embedding_df], axis=1)
+                    processed_cols_w2v.append(col)
+                except Exception as e_w2v:
+                    print(f"Error training or applying Word2Vec for column '{col}': {e_w2v}. Column will be skipped.")
+            
+            if processed_cols_w2v:
+                encoded_data = encoded_data.drop(columns=processed_cols_w2v)
+                print(f"Dropped original Word2Vec processed columns: {processed_cols_w2v}")
         else:
-            raise ValueError(f"Unknown encoding method: {method}. Use 'onehot', 'label', 'ordinal', 'lsa', or 'embedding'.")
+            raise ValueError(f"Unknown encoding method: {method}. Use 'onehot', 'label', 'ordinal', 'lsa', 'embedding', or 'leaveoneout'.")
 
         return encoded_data 

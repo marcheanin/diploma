@@ -145,7 +145,7 @@ class ModelTrainer:
         # Attempt to drop 'ID' or 'id' column if it exists and is not the target
         potential_id_columns = [col for col in ['ID', 'id'] if col in _train_data.columns and col != target_column]
         if potential_id_columns:
-            print(f"Dropping ID column(s): {potential_id_columns} before training.")
+            # print(f"Dropping ID column(s): {potential_id_columns} before training.")
             _train_data = _train_data.drop(columns=potential_id_columns)
             if not _test_data.empty: # Ensure test_data is not empty before trying to drop
                  _test_data = _test_data.drop(columns=potential_id_columns, errors='ignore')
@@ -249,7 +249,7 @@ class ModelTrainer:
                     keras_curves_info = self._plot_keras_learning_curves(history, output_path)
                     metrics['keras_learning_curves'] = keras_curves_info
                 except Exception as e:
-                    print(f"Could not plot Keras learning curves: {e}")
+                    # print(f"Could not plot Keras learning curves: {e}") # Reduced verbosity
                     pass
         
         else: # Scikit-learn models
@@ -298,7 +298,7 @@ class ModelTrainer:
                     sklearn_lc_data = self.plot_learning_curves(X_train, y_train, output_path)
                     metrics['sklearn_learning_curves'] = sklearn_lc_data
                 except Exception as e:
-                    print(f"Could not plot scikit-learn learning curves for {self.model_type}: {e}")
+                    # print(f"Could not plot scikit-learn learning curves for {self.model_type}: {e}") # Reduced verbosity
                     pass
         
         # Common part for predictions on test_data if it had no target
@@ -314,8 +314,11 @@ class ModelTrainer:
 
             try:
                 if self.model_type == 'neural_network':
-                    test_pred_proba = self.model.predict(original_test_data_for_prediction, verbose=0)
-                    if output_units > 1 : # multiclass
+                    # Ensure original_test_data_for_prediction is suitable for Keras model
+                    # It should have the same features (and order) as X_train
+                    # The reindex with X_train.columns should handle this.
+                    test_pred_proba = self.model.predict(original_test_data_for_prediction, verbose=0) 
+                    if self.model.layers[-1].output_shape[-1] > 1 : # multiclass (output_units > 1)
                         test_final_preds = np.argmax(test_pred_proba, axis=1)
                     else: # binary
                         test_final_preds = (test_pred_proba > 0.5).astype(int).ravel()
@@ -325,7 +328,7 @@ class ModelTrainer:
                 test_predictions_df = pd.DataFrame({'predictions': test_final_preds}, index=original_test_data_for_prediction.index)
                 metrics['test_predictions'] = test_predictions_df
             except Exception as e:
-                 print(f"Could not generate predictions on provided test data (no target): {e}")
+                 # print(f"Could not generate predictions on provided test data (no target): {e}") # Reduced verbosity
                  pass
 
         feature_importance = pd.DataFrame({
