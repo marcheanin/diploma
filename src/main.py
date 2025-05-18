@@ -286,7 +286,7 @@ def process_data(train_path, test_path, target_column,
     
     return train_data_path, test_data_path, research_path
 
-def train_model(train_data_path, test_data_path, target_column, research_path, plot_learning_curves=True):
+def train_model(train_data_path, test_data_path, target_column, research_path, model_type='random_forest', plot_learning_curves=True):
     """
     Train and evaluate model on processed data.
     
@@ -294,12 +294,19 @@ def train_model(train_data_path, test_data_path, target_column, research_path, p
         train_data_path: str, path to processed train data CSV file
         test_data_path: str, path to processed test data CSV file
         target_column: str, name of target column
-        research_path: str, path to save research results
+        research_path: str, base path to save research results for this data configuration
+        model_type: str, type of model to train ('random_forest', 'logistic_regression', 'gradient_boosting')
         plot_learning_curves: bool, whether to plot learning curves
     
     Returns:
         ModelTrainer: trained model instance
     """
+    # Create a specific directory for this model's results
+    model_specific_research_path = os.path.join(research_path, model_type)
+    os.makedirs(model_specific_research_path, exist_ok=True)
+    print(f"\n=== Training model: {model_type} ===")
+    print(f"Results will be saved in: {model_specific_research_path}")
+
     print("\n=== Loading processed data ===")
     try:
         train_data = pd.read_csv(train_data_path)
@@ -326,7 +333,7 @@ def train_model(train_data_path, test_data_path, target_column, research_path, p
          print("No test data loaded.")
     
     print("\n=== Training and evaluating model ===")
-    model_trainer = ModelTrainer()
+    model_trainer = ModelTrainer(model_type=model_type)
     
     # Check if test_data is None and handle appropriately
     if test_data is None:
@@ -342,33 +349,33 @@ def train_model(train_data_path, test_data_path, target_column, research_path, p
         test_data_dummy = pd.DataFrame(columns=train_data.columns.drop(target_column)) 
         metrics, feature_importance = model_trainer.train(
             train_data, test_data_dummy, target_column, 
-            output_path=research_path, 
+            output_path=model_specific_research_path, # Use model specific path
             plot_learning_curves=plot_learning_curves
         )
     else:
         # Proceed with existing logic if test_data is available
         metrics, feature_importance = model_trainer.train(
             train_data, test_data, target_column, 
-            output_path=research_path, 
+            output_path=model_specific_research_path, # Use model specific path
             plot_learning_curves=plot_learning_curves
         )
     
     # Print metrics
-    print("\nTraining Metrics:")
+    print(f"\nTraining Metrics for {model_type}:")
     print(f"Accuracy: {metrics['train']['accuracy']:.4f}")
     print(f"F1 Score: {metrics['train']['f1']:.4f}")
     
     # Determine which evaluation metrics we have (test or validation)
     eval_key = 'test' if 'test' in metrics else 'validation' if 'validation' in metrics else None
     if eval_key:
-        print(f"\n{eval_key.title()} Metrics:")
+        print(f"\n{eval_key.title()} Metrics for {model_type}:")
         print(f"Accuracy: {metrics[eval_key]['accuracy']:.4f}")
         print(f"F1 Score: {metrics[eval_key]['f1']:.4f}")
     else:
         print("\nNo evaluation metrics available (test/validation).")
     
     # Save model results
-    save_model_results(metrics, feature_importance, research_path)
+    save_model_results(metrics, feature_importance, model_specific_research_path) # Use model specific path
     
     return model_trainer
 
@@ -377,10 +384,9 @@ def main():
     # data_path = "datasets/diabetes.csv"
     # target_column = "Outcome"
 
-    print("\n=== Processing Credit Score Dataset ===")
-    train_path = "datasets/credit-score-classification/train.csv"
-    test_path = "datasets/credit-score-classification/test.csv"
-    target_column = "Credit_Score"
+    print("\n=== Processing kredit card dataset ===")
+    train_path = "datasets/UCI_Credit_Card.csv"
+    target_column = "default.payment.next.month"
     n_lsa_components = 20 # Задаем количество компонент для LSA
     knn_imputation_args = {'n_neighbors': 5}
     generate_learning_curves = False# <<--- Управляем построением кривых здесь
@@ -393,17 +399,47 @@ def main():
     try:
         print("\n=== Processing data with KNN + LSA Encoding + No Resampling ===")
         train_lsa_path, test_lsa_path, research_lsa_path = process_data(
-            train_path, test_path, target_column,
-            imputation_method='median',
-            encoding_method='embedding',
-            resampling_method='smote', 
+            train_path, None,  target_column,
+            imputation_method='knn',
+            encoding_method='label',
+            resampling_method='adasyn', 
             scaling_method='standard',
-            encoding_kwargs={'n_components': n_lsa_components, 'embedding_method': 'word2vec'}
+            # encoding_kwargs={'n_components': n_lsa_components, 'embedding_method': 'word2vec'}
         )
-        print("\n=== Training model on LSA encoded data (No Resampling) ===")
+        
+        # Base research path for this data configuration
+        base_research_lsa_path = research_lsa_path
+
+        print("\n=== Training Random Forest model on LSA encoded data (No Resampling) ===")
         train_model(
             train_lsa_path, test_lsa_path, target_column,
-            research_lsa_path, plot_learning_curves=generate_learning_curves
+            base_research_lsa_path, # Pass base research path
+            model_type='random_forest',
+            plot_learning_curves=generate_learning_curves
+        )
+
+        print("\n=== Training Logistic Regression model on LSA encoded data (No Resampling) ===")
+        train_model(
+            train_lsa_path, test_lsa_path, target_column,
+            base_research_lsa_path, # Pass base research path
+            model_type='logistic_regression',
+            plot_learning_curves=generate_learning_curves
+        )
+
+        print("\n=== Training Gradient Boosting model on LSA encoded data (No Resampling) ===")
+        train_model(
+            train_lsa_path, test_lsa_path, target_column,
+            base_research_lsa_path, # Pass base research path
+            model_type='gradient_boosting',
+            plot_learning_curves=generate_learning_curves
+        )
+
+        print("\n=== Training Neural Network model on LSA encoded data (No Resampling) ===")
+        train_model(
+            train_lsa_path, test_lsa_path, target_column,
+            base_research_lsa_path, # Pass base research path
+            model_type='neural_network',
+            plot_learning_curves=generate_learning_curves
         )
     except Exception as e:
         print(f"Error processing/training with LSA Encoding: {e}")
