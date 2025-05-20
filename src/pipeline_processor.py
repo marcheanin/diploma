@@ -30,7 +30,8 @@ def process_data(train_path, test_path, target_column,
                  imputation_kwargs=None, 
                  outlier_kwargs=None,
                  encoding_kwargs=None,
-                 scaling_kwargs=None):
+                 scaling_kwargs=None,
+                 save_processed_data=True):
     """
     Process data using specified imputation, encoding, and resampling methods.
     
@@ -47,6 +48,7 @@ def process_data(train_path, test_path, target_column,
         outlier_kwargs: dict, keyword arguments for the outlier removal method
         encoding_kwargs: dict, keyword arguments for the encoding method
         scaling_kwargs: dict, keyword arguments for the scaling method
+        save_processed_data: bool, whether to save processed data to disk
         
     Returns:
         tuple: (train_data_path, test_data_path, research_path) or (None, None, None) if error
@@ -212,16 +214,30 @@ def process_data(train_path, test_path, target_column,
         filename_suffix_parts.append(scaling_method)
     output_suffix = f"_processed_{'_'.join(filename_suffix_parts)}"
     
-    train_data_path = os.path.join(results_path, f'train{output_suffix}.csv')
-    test_data_path_out = os.path.join(results_path, f'test{output_suffix}.csv')
-    
-    train_data.to_csv(train_data_path, index=False)
-    if test_data is not None and not test_data.empty:
-        test_data.to_csv(test_data_path_out, index=False)
+    processed_train_df = train_data # Keep DataFrame in memory
+    processed_test_df = test_data  # Keep DataFrame in memory
+
+    train_data_path_out = None
+    test_data_path_out = None
+
+    if save_processed_data:
+        train_data_path_out = os.path.join(results_path, f'train{output_suffix}.csv')
+        test_data_path_out = os.path.join(results_path, f'test{output_suffix}.csv')
+        
+        processed_train_df.to_csv(train_data_path_out, index=False)
+        if processed_test_df is not None and not processed_test_df.empty:
+            processed_test_df.to_csv(test_data_path_out, index=False)
+        else:
+            test_data_path_out = None # Ensure it's None if not saved
+        print(f"[Pipeline Stage - Chromosome: {experiment_name.replace('_', ',')}] Data processing complete. Processed files saved to: {results_path}")
     else:
-        test_data_path_out = None
-    
-    print(f"[Pipeline Stage - Chromosome: {experiment_name.replace('_', ',')}] Data processing complete. Processed files saved to: {results_path}")
+        print(f"[Pipeline Stage - Chromosome: {experiment_name.replace('_', ',')}] Data processing complete. Processed data NOT saved to disk (GA mode).")
+        # Paths will be None, but dataframes are returned
+
     # analyze_target_correlations was commented out, so not re-adding here for now.
     
-    return train_data_path, test_data_path_out, research_path 
+    # Return DataFrames directly if not saving, otherwise paths
+    if not save_processed_data:
+        return processed_train_df, processed_test_df, research_path
+    else:
+        return train_data_path_out, test_data_path_out, research_path 

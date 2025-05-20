@@ -56,32 +56,36 @@ def evaluate_chromosome(chromosome_genes, train_path_ga, test_path_ga, target_co
     try:
         print(f"\n[GA - Chromosome: {chromosome_genes}] Calling process_data...")
         # process_data is imported from pipeline_processor
-        processed_train_path, processed_test_path, research_path_for_chromosome_config = process_data(
+        # It will now return DataFrames when save_processed_data is False
+        processed_train_data_df, processed_test_data_df, research_path_for_chromosome_config = process_data(
             train_path_ga, test_path_ga, target_column_ga,
             imputation_method=current_imputation_method,
             outlier_method=current_outlier_method, 
             encoding_method=current_encoding_method,
             resampling_method=current_resampling_method, 
             scaling_method=current_scaling_method,
+            save_processed_data=False # Ensure data is not saved for GA evals
         )
         
-        if processed_train_path is None: # Indicates an error in process_data
+        if processed_train_data_df is None: # Indicates an error in process_data
             print(f"Data processing failed for chromosome {chromosome_genes}. Skipping model training.")
             return -1.0
             
-        print(f"[GA - Chromosome: {chromosome_genes}] Data processing completed. Processed train: {processed_train_path}")
+        # print(f"[GA - Chromosome: {chromosome_genes}] Data processing completed. Using in-memory DataFrames.")
         # research_path_for_chromosome_config is the base for this data processing setup.
         # Model results will go into a subfolder of this, specific to the model type.
-        # This path is passed to train_model, which will create a model_type subfolder.
+        # This path is passed to train_model, which will create a model_type subfolder if saving is enabled there (but it's not for GA evals).
 
         print(f"[GA - Chromosome: {chromosome_genes}] Calling train_model for model: {current_model_type}...")
-        # train_model is imported from main and now returns (metrics, feature_importance)
+        # train_model is imported from main and now accepts DataFrames directly
         metrics_output, ft_importance_output = train_model(
-            processed_train_path, processed_test_path, target_column_ga,
-            research_path=research_path_for_chromosome_config, # Pass the config-specific research path 
+            processed_train_data_df, # Pass DataFrame directly
+            processed_test_data_df,  # Pass DataFrame directly (can be None)
+            target_column_ga,
+            research_path=research_path_for_chromosome_config, 
             model_type=current_model_type,
             plot_learning_curves=gen_learning_curves_ga,
-            save_run_results=False # <<< Ensure results are not saved for each GA eval
+            save_run_results=False # This is already False for GA evals, as set in previous steps
         )
 
         if metrics_output:

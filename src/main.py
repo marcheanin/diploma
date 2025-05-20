@@ -83,9 +83,10 @@ def decode_and_log_chromosome(chromosome):
     print("-----------------------------\n")
     return decoded
 
-def train_model(train_data_path, test_data_path, target_column, research_path, model_type='random_forest', plot_learning_curves=True, save_run_results=True):
+def train_model(train_data_input, test_data_input, target_column, research_path, model_type='random_forest', plot_learning_curves=True, save_run_results=True):
     """
     Train and evaluate model on processed data.
+    Accepts either file paths or pandas DataFrames as input for train_data_input and test_data_input.
     Returns metrics and feature importance from the model trainer.
     """
     
@@ -111,24 +112,44 @@ def train_model(train_data_path, test_data_path, target_column, research_path, m
         effective_plot_learning_curves = False
         print(f"\n=== Training model: {model_type} === (Results not saved)")
 
-    try:
-        train_data = pd.read_csv(train_data_path)
-    except FileNotFoundError:
-        print(f"Error: Training data file not found at {train_data_path}")
-        return None, None # Return None for metrics and feature_importance on error
-    
-    if test_data_path and os.path.exists(test_data_path):
-        test_data = pd.read_csv(test_data_path)
+    train_data_df = None
+    test_data_df = None
+
+    if isinstance(train_data_input, str):
+        try:
+            train_data_df = pd.read_csv(train_data_input)
+        except FileNotFoundError:
+            print(f"Error: Training data file not found at {train_data_input}")
+            return None, None
+    elif isinstance(train_data_input, pd.DataFrame):
+        train_data_df = train_data_input.copy()
     else:
-         print(f"Warning: Test data file not found or not provided ({test_data_path}). Proceeding with validation split or without test eval.")
-         test_data = None 
+        print(f"Error: Invalid type for train_data_input. Expected str or DataFrame, got {type(train_data_input)}")
+        return None, None
+
+    if test_data_input is not None:
+        if isinstance(test_data_input, str):
+            if os.path.exists(test_data_input):
+                test_data_df = pd.read_csv(test_data_input)
+            else:
+                print(f"Warning: Test data file not found at {test_data_input}. Proceeding with validation split or without test eval.")
+                # test_data_df remains None
+        elif isinstance(test_data_input, pd.DataFrame):
+            test_data_df = test_data_input.copy()
+        else:
+            print(f"Warning: Invalid type for test_data_input. Expected str, DataFrame, or None. Got {type(test_data_input)}. Proceeding without test data.")
+            # test_data_df remains None
+    else:
+        # print("Test data input is None. Proceeding with validation split or without test eval if applicable.")
+        pass # test_data_df remains None
 
     model_trainer = ModelTrainer(model_type=model_type)
     
+    # Pass the DataFrames to the model_trainer.train method
     metrics, feature_importance = model_trainer.train(
-        train_data, test_data, target_column, 
-        output_path=trainer_output_path, # Pass potentially None or temp path
-        plot_learning_curves=effective_plot_learning_curves # Pass effective flag
+        train_data_df, test_data_df, target_column, 
+        output_path=trainer_output_path, 
+        plot_learning_curves=effective_plot_learning_curves
     )
     
     if metrics is None:
