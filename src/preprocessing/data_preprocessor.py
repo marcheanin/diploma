@@ -191,19 +191,43 @@ class DataPreprocessor:
 
         data = data.copy()
         encoder_key = 'onehot'
+        
+        # Filter out high cardinality columns before fitting the encoder
+        low_cardinality_cols = []
+        skipped_cols = []
+        MAX_OH_CARDINALITY = 50 # Max unique values for OneHotEncoding
+        for col in cols_to_encode:
+            if data[col].nunique(dropna=False) <= MAX_OH_CARDINALITY:
+                low_cardinality_cols.append(col)
+            else:
+                skipped_cols.append(col)
+        
+        if not low_cardinality_cols:
+            if skipped_cols:
+                print(f"Warning: OneHotEncoding skipped for all specified columns due to high cardinality: {skipped_cols}. Columns to encode: {cols_to_encode}")
+            return data # Return original data if no columns are suitable
+        
+        if skipped_cols:
+            print(f"Warning: OneHotEncoding skipped for high cardinality columns: {skipped_cols}. Applied to: {low_cardinality_cols}")
+
         if encoder_key not in self.encoders:
+            # Fit encoder only on low cardinality columns
             self.encoders[encoder_key] = OneHotEncoder(
                 handle_unknown='ignore',
-                sparse_output=False,
+                sparse_output=False, # Still potentially memory intensive if many low_card_cols generate many features
                 drop=None
             )
-            self.encoders[encoder_key].fit(data[cols_to_encode].astype(str))
+            # Ensure fitting with string type to be consistent
+            self.encoders[encoder_key].fit(data[low_cardinality_cols].astype(str))
 
         encoder = self.encoders[encoder_key]
-        encoded = encoder.transform(data[cols_to_encode].astype(str))
-        new_cols = encoder.get_feature_names_out(cols_to_encode)
+        # Transform only low cardinality columns
+        encoded = encoder.transform(data[low_cardinality_cols].astype(str))
+        new_cols = encoder.get_feature_names_out(low_cardinality_cols)
         encoded_df = pd.DataFrame(encoded, columns=new_cols, index=data.index)
-        data_remaining = data.drop(columns=cols_to_encode)
+        
+        # Drop the original low_cardinality_cols that were encoded, keep skipped_cols and other columns
+        data_remaining = data.drop(columns=low_cardinality_cols)
         return pd.concat([data_remaining, encoded_df], axis=1)
 
     def _label_encode(self, data, cols_to_encode):
@@ -447,33 +471,40 @@ class DataPreprocessor:
         Encode categorical features (excluding target unless method='target').
         Target column is encoded separately using _label_encode_target if needed.
         """
-        if not self.cat_columns and not self.numeric_columns:
-            self._get_column_types(data)
+        encoded_data = data.copy() # Initialize encoded_data here
 
-        active_cat_cols = self._get_active_cat_cols(data, target_col, method)
-        if not active_cat_cols and method != 'target':
-             return data
+        if not self.cat_columns and not self.numeric_columns:
+            self._get_column_types(encoded_data) # Use encoded_data
+
+        active_cat_cols = self._get_active_cat_cols(encoded_data, target_col, method) # Use encoded_data
+        if not active_cat_cols and method not in ['target', 'leaveoneout']: # Adjusted condition for LOOE
+             # print(f"No active categorical columns to encode with method '{method}'. Returning original data.")
+             return encoded_data # Return the copy
 
         if method == 'onehot':
-            encoded_data = self._onehot_encode(data, active_cat_cols)
+            encoded_data = self._onehot_encode(encoded_data, active_cat_cols) # Pass and reassign encoded_data
         elif method == 'label':
-            encoded_data = self._label_encode(data, active_cat_cols)
+            encoded_data = self._label_encode(encoded_data, active_cat_cols) # Pass and reassign
         elif method == 'ordinal':
-             encoded_data = self._ordinal_encode(data, active_cat_cols)
+             encoded_data = self._ordinal_encode(encoded_data, active_cat_cols) # Pass and reassign
         elif method == 'lsa':
             n_components = kwargs.get('n_components', 10)
-            encoded_data = self._lsa_encode(data, active_cat_cols, n_components=n_components)
-        elif method == 'embedding':
+            encoded_data = self._lsa_encode(encoded_data, active_cat_cols, n_components=n_components) # Pass and reassign
+        elif method == 'embedding': # This is one of the word2vec blocks
             if not GENSIM_AVAILABLE:
-                print("Word2Vec encoding skipped: Gensim library not available.")
-                return encoded_data # Return data as is if Word2Vec can't run
+                print("Word2Vec encoding (via 'embedding') skipped: Gensim library not available.")
+                return encoded_data # Return current encoded_data
 
-            self.word2vec_dims = kwargs.get('embedding_dim', self.word2vec_dims) # Default is in __init__
+            self.word2vec_dims = kwargs.get('embedding_dim', self.word2vec_dims)
             if self.word2vec_dims <= 0:
-                print("Word2Vec encoding skipped: embedding_dim must be > 0.")
+                print("Word2Vec encoding (via 'embedding') skipped: embedding_dim must be > 0.")
+                return encoded_data
+            
+            if not active_cat_cols:
+                # print("Word2Vec (via 'embedding') skipped: No categorical columns for encoding.")
                 return encoded_data
 
-            # print(f"Applying Word2Vec with embedding_dim={self.word2vec_dims} for columns: {active_cat_cols}")
+            # print(f"Applying Word2Vec (via 'embedding') with embedding_dim={self.word2vec_dims} for columns: {active_cat_cols}")
             
             processed_cols_w2v = [] # Keep track of columns successfully processed by Word2Vec
             for col in active_cat_cols:
@@ -522,19 +553,24 @@ class DataPreprocessor:
             if target_col is None or target_col not in data.columns:
                 raise ValueError("LeaveOneOutEncoder requires a target column specified and present in data.")
             
-            temp_target_series = data[target_col]
+            # Use encoded_data for LOOE, not original 'data'
+            temp_target_series = encoded_data[target_col]
             if not pd.api.types.is_numeric_dtype(temp_target_series):
                 print(f"Target column '{target_col}' for LOOE is categorical. Applying temporary LabelEncoding.")
                 le_target = LabelEncoder()
                 temp_target_series = le_target.fit_transform(temp_target_series)
 
             looe = LeaveOneOutEncoder(cols=active_cat_cols, sigma=kwargs.get('sigma', 0.05))
-            encoded_data = pd.DataFrame(looe.fit_transform(data[active_cat_cols], temp_target_series), columns=active_cat_cols)
+            # Ensure fit_transform is on the correct DataFrame columns
+            encoded_looe_df = pd.DataFrame(looe.fit_transform(encoded_data[active_cat_cols], temp_target_series), columns=active_cat_cols, index=encoded_data.index)
+            # Update the columns in encoded_data, don't just assign the result to encoded_data directly if it only contains the encoded cols
+            for col in active_cat_cols:
+                encoded_data[col] = encoded_looe_df[col]
             self.encoders['leaveoneout'] = looe
-        elif method == 'word2vec':
+        elif method == 'word2vec': # This is the second word2vec block
             if not GENSIM_AVAILABLE:
                 print("Word2Vec encoding skipped: Gensim library not available.")
-                return encoded_data
+                return encoded_data # Return current encoded_data
 
             self.word2vec_dims = kwargs.get('embedding_dim', self.word2vec_dims)
             if self.word2vec_dims <= 0:
@@ -542,7 +578,7 @@ class DataPreprocessor:
                 return encoded_data
 
             if not active_cat_cols:
-                print("Word2Vec skipped: No categorical columns identified for encoding.")
+                # print("Word2Vec skipped: No categorical columns identified for encoding.")
                 return encoded_data
 
             # print(f"Applying Word2Vec with embedding_dim={self.word2vec_dims} for columns: {active_cat_cols}")

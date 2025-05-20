@@ -1,6 +1,7 @@
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report, accuracy_score, f1_score
+from sklearn.metrics import classification_report, accuracy_score, f1_score, average_precision_score
+from sklearn.preprocessing import LabelBinarizer
 from sklearn.linear_model import LogisticRegression
 import pandas as pd
 import numpy as np
@@ -127,18 +128,16 @@ class ModelTrainer:
         """
         # Ensure test_data is not None for initial checks, even if it's empty or just for prediction structure
         if test_data is None:
-             # Create a minimal DataFrame with expected columns if test_data is truly absent
-             # This helps avoid errors in X_train.columns if train_data is also manipulated
+            # Create a minimal DataFrame with expected columns if test_data is truly absent
             if target_column in train_data.columns:
                 dummy_cols = train_data.drop(columns=[target_column]).columns
             else: # Should not happen if target_column is required for training
                 dummy_cols = train_data.columns 
             test_data = pd.DataFrame(columns=dummy_cols)
 
+        # Initialize the variable that might be used for final predictions on original test set
+        original_test_data_for_prediction = None
 
-        has_test_target = target_column in test_data.columns and not test_data[target_column].isnull().all()
-        
-        # Prepare data (common for all models first)
         _train_data = train_data.copy()
         _test_data = test_data.copy()
 
@@ -150,6 +149,16 @@ class ModelTrainer:
             if not _test_data.empty: # Ensure test_data is not empty before trying to drop
                  _test_data = _test_data.drop(columns=potential_id_columns, errors='ignore')
 
+        # If _test_data is available (after potential ID drop), it's our candidate for original test set predictions.
+        # This variable is intended for use if the code later needs to predict on the exact original test data provided
+        # to the train function, especially if X_test/y_test are later reassigned to a validation set.
+        if not _test_data.empty:
+            original_test_data_for_prediction = _test_data.copy()
+        
+        # Determine if the (potentially modified) _test_data contains a target for evaluation purposes
+        has_test_target = target_column in _test_data.columns and not _test_data[target_column].isnull().all()
+        
+        # Prepare X_train, y_train, X_test, y_test for model training and evaluation
         if has_test_target:
             X_train = _train_data.drop(columns=[target_column])
             y_train = _train_data[target_column]
@@ -168,8 +177,8 @@ class ModelTrainer:
             )
             X_train = train_eval.drop(columns=[target_column])
             y_train = train_eval[target_column]
-            X_test = valid_data.drop(columns=[target_column])
-            y_test = valid_data[target_column]
+            X_test = valid_data.drop(columns=[target_column]) # X_test becomes validation features
+            y_test = valid_data[target_column]               # y_test becomes validation target
             eval_name = 'validation'
 
         # Common metrics dictionary structure
@@ -184,9 +193,12 @@ class ModelTrainer:
             num_classes = len(np.unique(y_train_nn))
             input_dim = X_train.shape[1]
 
+            y_pred_probas_eval_keras = None # Initialize for PR AUC
+            y_pred_probas_train_keras = None # Initialize for PR AUC train
+
             if num_classes > 2:
                 y_train_keras = to_categorical(y_train_nn, num_classes=num_classes)
-                y_test_keras = to_categorical(y_test_nn, num_classes=num_classes)
+                y_test_keras = to_categorical(y_test_nn, num_classes=num_classes) # This is y_true_one_hot for PR AUC
                 loss_function = 'categorical_crossentropy'
                 output_activation = 'softmax'
                 output_units = num_classes
@@ -222,6 +234,8 @@ class ModelTrainer:
             
             train_pred_proba = self.model.predict(X_train, verbose=0)
             eval_pred_proba = self.model.predict(X_test, verbose=0)
+            y_pred_probas_eval_keras = eval_pred_proba # Save for PR AUC
+            y_pred_probas_train_keras = train_pred_proba # Save for PR AUC train
 
             if num_classes > 2:
                 train_preds = np.argmax(train_pred_proba, axis=1)
@@ -230,15 +244,33 @@ class ModelTrainer:
                 train_preds = (train_pred_proba > 0.5).astype(int).ravel()
                 eval_preds = (eval_pred_proba > 0.5).astype(int).ravel()
 
+            # Calculate PR AUC for Keras
+            pr_auc_eval_keras = 0.0
+            pr_auc_train_keras = 0.0
+            try:
+                if num_classes == 2:
+                    # y_test_nn is 1D, y_pred_probas_eval_keras might be (N,1) or (N,)
+                    pr_auc_eval_keras = average_precision_score(y_test_nn, y_pred_probas_eval_keras.ravel())
+                    pr_auc_train_keras = average_precision_score(y_train_nn, y_pred_probas_train_keras.ravel())
+                else: # num_classes > 2
+                    # y_test_keras is one-hot, y_pred_probas_eval_keras is (N, num_classes)
+                    # y_train_keras is one-hot, y_pred_probas_train_keras is (N, num_classes)
+                    pr_auc_eval_keras = average_precision_score(y_test_keras, y_pred_probas_eval_keras, average='weighted')
+                    pr_auc_train_keras = average_precision_score(y_train_keras, y_pred_probas_train_keras, average='weighted')
+            except Exception as e:
+                print(f"Could not calculate PR AUC for Keras model ({eval_name} or train): {e}")
+
             metrics = {
                 'train': {
                     'accuracy': accuracy_score(y_train_nn, train_preds),
                     'f1': f1_score(y_train_nn, train_preds, average='weighted', zero_division=0),
+                    'pr_auc': pr_auc_train_keras, # Added PR AUC for train
                     'detailed_report': classification_report(y_train_nn, train_preds, zero_division=0)
                 },
                 eval_name: {
                     'accuracy': accuracy_score(y_test_nn, eval_preds),
                     'f1': f1_score(y_test_nn, eval_preds, average='weighted', zero_division=0),
+                    'pr_auc': pr_auc_eval_keras, # Added PR AUC
                     'detailed_report': classification_report(y_test_nn, eval_preds, zero_division=0)
                 },
                 'keras_history_path': None # Will be updated if plotting happens
@@ -264,7 +296,7 @@ class ModelTrainer:
                 )
             elif self.model_type == 'gradient_boosting':
                 self.model = GradientBoostingClassifier(
-                    n_estimators=100, learning_rate=0.1, max_depth=3,
+                    n_estimators=50, learning_rate=0.01, max_depth=5,
                     random_state=self.random_state
                 )
             else:
@@ -274,15 +306,54 @@ class ModelTrainer:
             train_preds = self.model.predict(X_train)
             eval_preds = self.model.predict(X_test)
             
+            # Calculate PR AUC for scikit-learn
+            pr_auc_eval_sklearn = 0.0
+            pr_auc_train_sklearn = 0.0
+            try:
+                y_pred_probas_eval_sklearn = self.model.predict_proba(X_test)
+                y_pred_probas_train_sklearn = self.model.predict_proba(X_train)
+
+                if len(self.model.classes_) == 2:
+                    pr_auc_eval_sklearn = average_precision_score(y_test, y_pred_probas_eval_sklearn[:, 1])
+                    pr_auc_train_sklearn = average_precision_score(y_train, y_pred_probas_train_sklearn[:, 1])
+                else: # Multi-class
+                    lb = LabelBinarizer()
+                    y_test_one_hot = lb.fit_transform(y_test)
+                    y_train_one_hot = lb.transform(y_train) # Use transform for train after fit on test or fit on train and transform test
+
+                    # It's better to fit LabelBinarizer on the combined set of labels or on y_train and then transform y_test.
+                    # For simplicity here, assuming y_train covers all classes or fitting on y_train first.
+                    # Let's refit lb on y_train and transform both.
+                    lb_train = LabelBinarizer()
+                    y_train_one_hot = lb_train.fit_transform(y_train)
+                    y_test_one_hot = lb_train.transform(y_test)
+
+
+                    # If y_test_one_hot becomes (N,1) for a multi-class setup with only 2 actual classes in y_test subset,
+                    # this check ensures correct handling if LabelBinarizer simplifies.
+                    if y_test_one_hot.shape[1] == 1 and len(lb_train.classes_) > 2 : # Check based on lb_train
+                         print(f"Warning: LabelBinarizer produced single column for multi-class y_test for PR AUC. Classes: {lb_train.classes_}")
+                    
+                    if y_train_one_hot.shape[1] == 1 and len(lb_train.classes_) > 2 :
+                         print(f"Warning: LabelBinarizer produced single column for multi-class y_train for PR AUC. Classes: {lb_train.classes_}")
+
+
+                    pr_auc_eval_sklearn = average_precision_score(y_test_one_hot, y_pred_probas_eval_sklearn, average='weighted')
+                    pr_auc_train_sklearn = average_precision_score(y_train_one_hot, y_pred_probas_train_sklearn, average='weighted')
+            except Exception as e:
+                print(f"Could not calculate PR AUC for scikit-learn model {self.model_type} ({eval_name} or train): {e}")
+
             metrics = {
                 'train': {
                     'accuracy': accuracy_score(y_train, train_preds),
                     'f1': f1_score(y_train, train_preds, average='weighted', zero_division=0),
+                    'pr_auc': pr_auc_train_sklearn, # Added PR AUC for train
                     'detailed_report': classification_report(y_train, train_preds, zero_division=0)
                 },
                 eval_name: {
                     'accuracy': accuracy_score(y_test, eval_preds),
                     'f1': f1_score(y_test, eval_preds, average='weighted', zero_division=0),
+                    'pr_auc': pr_auc_eval_sklearn, # Added PR AUC
                     'detailed_report': classification_report(y_test, eval_preds, zero_division=0)
                 }
             }
