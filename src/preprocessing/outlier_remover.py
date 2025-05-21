@@ -7,28 +7,43 @@ class OutlierRemover:
     A class to remove outliers from a pandas DataFrame.
     Supported methods: 'isolation_forest', 'iqr', 'none'.
     """
-    def __init__(self, method='isolation_forest', contamination=0.05, iqr_multiplier=1.5, random_state=42):
+    def __init__(self, method='isolation_forest', **kwargs):
         """
         Initialize the OutlierRemover.
 
         Args:
             method (str): Method to use for outlier detection.
                           'isolation_forest', 'iqr', or 'none'.
-            contamination (float): The amount of contamination of the data set, i.e.,
-                                   the proportion of outliers in the data set. 
-                                   Used by Isolation Forest.
-            iqr_multiplier (float): Multiplier for the IQR range. Used by IQR method.
-            random_state (int): Random state for reproducibility for Isolation Forest.
+            **kwargs: Hyperparameters for the chosen method.
+                      For 'isolation_forest': n_estimators, contamination.
+                      For 'iqr': multiplier.
         """
         if method not in ['isolation_forest', 'iqr', 'none']:
             raise ValueError(f"Unsupported outlier removal method: {method}")
         
         self.method = method
-        self.contamination = contamination
-        self.iqr_multiplier = iqr_multiplier
-        self.random_state = random_state
         self.model = None
+        self.kwargs = kwargs # Store all kwargs
         self.outlier_indices_ = None
+
+        if self.method == 'isolation_forest':
+            # Extract relevant HPs, provide defaults if not in kwargs
+            if_n_estimators = self.kwargs.get('n_estimators', 100)
+            if_contamination = self.kwargs.get('contamination', 'auto')
+            self.model = IsolationForest(n_estimators=if_n_estimators, 
+                                         contamination=if_contamination, 
+                                         random_state=42)
+            # print(f"IsolationForest initialized with n_estimators={if_n_estimators}, contamination={if_contamination}")
+        elif self.method == 'iqr':
+            # multiplier will be used in remove_outliers method directly from self.kwargs
+            self.iqr_multiplier = self.kwargs.get('multiplier', 1.5)
+            # print(f"IQR method initialized with multiplier={self.iqr_multiplier}")
+            pass # No model to pre-initialize for IQR, logic is in remove_outliers
+        elif self.method == 'none':
+            # print("Outlier removal method is 'none'. No model initialized.")
+            pass
+        else:
+            raise ValueError(f"Unknown outlier removal method: {self.method}")
 
     def remove_outliers(self, data):
         """
@@ -42,8 +57,8 @@ class OutlierRemover:
             pd.DataFrame: DataFrame with outliers removed if a removal method was chosen,
                           otherwise the original DataFrame.
         """
-        if self.method == 'none':
-            print("Outlier removal skipped (method='none').")
+        if self.method == 'none' or data.empty:
+            # print("Skipping outlier removal (method is 'none' or data is empty).")
             return data
 
         data_cleaned = data.copy()
@@ -56,36 +71,57 @@ class OutlierRemover:
         print(f"Performing outlier removal using method: {self.method} on {len(numeric_cols)} numeric columns.")
 
         if self.method == 'isolation_forest':
-            self.model = IsolationForest(contamination=self.contamination, 
-                                         random_state=self.random_state,
-                                         n_jobs=-1)
-            predictions = self.model.fit_predict(data_cleaned[numeric_cols])
-            self.outlier_indices_ = data_cleaned.index[predictions == -1]
-            data_cleaned = data_cleaned[predictions == 1]
+            if self.model is None: # Should have been initialized in __init__
+                print("Error: Isolation Forest model not initialized.")
+                return data # or raise error
+            
+            # Ensure all data is finite for Isolation Forest
+            data_numeric_finite = data_cleaned[numeric_cols].replace([np.inf, -np.inf], np.nan).dropna()
+            if data_numeric_finite.empty:
+                print("Warning: Data became empty after handling non-finite values for Isolation Forest. Returning original data.")
+                return data
+            
+            original_indices = data_numeric_finite.index
+            outliers = self.model.fit_predict(data_numeric_finite)
+            mask_inliers = outliers != -1
+            
+            cleaned_numeric_data = data_numeric_finite[mask_inliers]
+            # print(f"Isolation Forest: {np.sum(~mask_inliers)} outliers removed out of {len(data_numeric_finite)} numeric samples.")
 
         elif self.method == 'iqr':
-            initial_rows = len(data_cleaned)
-            outliers_found_total = 0
-            for column in numeric_cols:
-                Q1 = data_cleaned[column].quantile(0.25)
-                Q3 = data_cleaned[column].quantile(0.75)
-                IQR = Q3 - Q1
-                lower_bound = Q1 - self.iqr_multiplier * IQR
-                upper_bound = Q3 + self.iqr_multiplier * IQR
-                
-                column_outliers = data_cleaned[(data_cleaned[column] < lower_bound) | (data_cleaned[column] > upper_bound)]
-                outliers_found_for_col = len(column_outliers)
-                if outliers_found_for_col > 0:
-                    pass
-                
-                data_cleaned = data_cleaned[(data_cleaned[column] >= lower_bound) & (data_cleaned[column] <= upper_bound)]
-                outliers_found_total += (initial_rows - len(data_cleaned)) - outliers_found_total
+            multiplier = self.kwargs.get('multiplier', 1.5) # Get from stored kwargs or default
+            # print(f"Applying IQR with multiplier: {multiplier}")
+            Q1 = data_cleaned[numeric_cols].quantile(0.25)
+            Q3 = data_cleaned[numeric_cols].quantile(0.75)
+            IQR = Q3 - Q1
+            lower_bound = Q1 - multiplier * IQR
+            upper_bound = Q3 + multiplier * IQR
             
-            num_removed_iqr = initial_rows - len(data_cleaned)
-            print(f"Removed {num_removed_iqr} rows containing outliers using IQR method across numeric columns.")
+            mask_inliers = ~((data_cleaned[numeric_cols] < lower_bound) | (data_cleaned[numeric_cols] > upper_bound)).any(axis=1)
+            cleaned_numeric_data = data_cleaned[mask_inliers]
+            # print(f"IQR: {np.sum(~mask_inliers)} outliers removed out of {len(data_cleaned[numeric_cols])} samples.")
+        else:
+            # Should not happen due to __init__ check, but as a safeguard
+            print(f"Unknown or unhandled outlier removal method: {self.method}. Returning original data.")
+            return data
+        
+        # Combine cleaned numeric data with original non-numeric data
+        if not data_cleaned.drop(columns=numeric_cols, errors='ignore').empty:
+            # Align indices before concatenating
+            # Ensure cleaned_numeric_data.index is a subset of data_cleaned.index if IF was used with dropna
+            common_index = cleaned_numeric_data.index.intersection(data_cleaned.index)
+            if self.method == 'isolation_forest' and not data_numeric_finite.index.equals(data_cleaned[numeric_cols].index):
+                 # If IF dropped rows due to NaNs, we need to be careful with rejoining
+                 # The cleaned_numeric_data already has the correct (potentially reduced) index from data_numeric_finite
+                 # We should use this index to select from non_numeric data
+                 final_data = pd.concat([cleaned_numeric_data, data_cleaned.drop(columns=numeric_cols, errors='ignore').loc[cleaned_numeric_data.index]], axis=1)
+            else:
+                 final_data = pd.concat([cleaned_numeric_data, data_cleaned.drop(columns=numeric_cols, errors='ignore').loc[cleaned_numeric_data.index]], axis=1)
+        else:
+            final_data = cleaned_numeric_data
 
         original_shape = data.shape
-        cleaned_shape = data_cleaned.shape
+        cleaned_shape = final_data.shape
         print(f"Outlier removal: {original_shape[0]} rows before, {cleaned_shape[0]} rows after.")
         
-        return data_cleaned 
+        return final_data 

@@ -1,6 +1,6 @@
 import os
 import pandas as pd
-from sklearn.preprocessing import StandardScaler, MinMaxScaler
+from sklearn.preprocessing import StandardScaler, MinMaxScaler, LabelEncoder
 
 # Assuming these modules are in the same directory or PYTHONPATH is set up
 from preprocessing.data_loader import DataLoader
@@ -22,56 +22,77 @@ def get_dataset_name(path):
     return 'unknown_dataset'
 
 def process_data(train_path, test_path, target_column,
-                 imputation_method='knn', 
-                 outlier_method='isolation_forest',
-                 encoding_method='label',
-                 resampling_method='none',
-                 scaling_method='none',
-                 imputation_kwargs=None, 
-                 outlier_kwargs=None,
-                 encoding_kwargs=None,
-                 scaling_kwargs=None,
-                 save_processed_data=True):
+                 imputation_method='knn', imputation_params=None,
+                 outlier_method='isolation_forest', outlier_params=None,
+                 encoding_method='label', encoding_params=None,
+                 resampling_method='none', resampling_params=None,
+                 scaling_method='none', scaling_params=None,
+                 save_processed_data=True,
+                 save_model_artifacts=True):
     """
-    Process data using specified imputation, encoding, and resampling methods.
+    Process data using specified methods and their hyperparameters.
     
     Args:
         train_path: str, path to training data
         test_path: str, path to test data
         target_column: str, name of target column
-        imputation_method: str, 'knn', 'median', or 'missforest'
-        outlier_method: str, 'isolation_forest', 'iqr', or 'none'
-        encoding_method: str, 'onehot', 'label', 'ordinal', 'leaveoneout', 'lsa', 'word2vec'
-        resampling_method: str, 'none', 'oversample' (ROS), 'undersample' (RUS), 'smote', 'adasyn'
-        scaling_method: str, 'none', 'standard', 'minmax'
-        imputation_kwargs: dict, keyword arguments for the imputation method
-        outlier_kwargs: dict, keyword arguments for the outlier removal method
-        encoding_kwargs: dict, keyword arguments for the encoding method
-        scaling_kwargs: dict, keyword arguments for the scaling method
+        imputation_method: str, e.g., 'knn', 'median', 'missforest'
+        imputation_params: dict, HPs for the imputation method
+        outlier_method: str, e.g., 'isolation_forest', 'iqr', 'none'
+        outlier_params: dict, HPs for the outlier removal method
+        encoding_method: str, e.g., 'onehot', 'label', 'lsa', 'word2vec'
+        encoding_params: dict, HPs for the encoding method
+        resampling_method: str, e.g., 'none', 'oversample', 'smote'
+        resampling_params: dict, HPs for the resampling method
+        scaling_method: str, e.g., 'none', 'standard', 'minmax'
+        scaling_params: dict, HPs for the scaling method
         save_processed_data: bool, whether to save processed data to disk
+        save_model_artifacts: bool, whether to create and use research_path for model artifacts (e.g. plots)
         
     Returns:
-        tuple: (train_data_path, test_data_path, research_path) or (None, None, None) if error
+        tuple: (train_data, test_data, research_path)
+               train_data/test_data are DataFrames if save_processed_data is False,
+               otherwise they are file paths.
+               Returns (None, None, None) if a critical error occurs.
     """
-    imputation_kwargs = imputation_kwargs or {}
-    outlier_kwargs = outlier_kwargs or {}
-    encoding_kwargs = encoding_kwargs or {}
-    scaling_kwargs = scaling_kwargs or {}
+    imputation_params = imputation_params or {}
+    outlier_params = outlier_params or {}
+    encoding_params = encoding_params or {}
+    resampling_params = resampling_params or {}
+    scaling_params = scaling_params or {}
     
     dataset_name = get_dataset_name(train_path)
     
+    # Experiment name includes method names only, HPs are too verbose for dir names
     experiment_name_parts = [imputation_method, outlier_method, encoding_method, resampling_method]
     if scaling_method != 'none':
         experiment_name_parts.append(scaling_method)
     experiment_name = "_".join(experiment_name_parts)
     
+    # Path for processed data files (e.g. train_processed.csv)
     results_path = os.path.join('results', dataset_name, experiment_name)
-    research_path = os.path.join("research", dataset_name, experiment_name) # This is base for this config
+    # Path for model-related research artifacts (e.g. learning curves, result summaries)
+    # This path might still be used by ModelTrainer even if directory isn't created here,
+    # if ModelTrainer receives it and decides to create subdirectories itself.
+    # However, not creating it here prevents empty directories if ModelTrainer also doesn't save.
+    research_path = os.path.join("research", dataset_name, experiment_name)
     
-    os.makedirs(results_path, exist_ok=True)
-    os.makedirs(research_path, exist_ok=True)
+    if save_processed_data:
+        os.makedirs(results_path, exist_ok=True)
+    
+    # Only create research_path if model artifacts are to be saved by this pipeline run
+    if save_model_artifacts:
+        os.makedirs(research_path, exist_ok=True)
+    # If save_model_artifacts is False, research_path is still constructed and passed,
+    # but the directory itself is not created by process_data.
+    # ModelTrainer will then decide if it wants to use this path (and potentially create it).
 
-    print(f"\n[Pipeline Stage - Chromosome: {experiment_name.replace('_', ',')}] Loading data...")
+    # Create a unique suffix for filenames if saving, including HPs would be too long.
+    # The GA evaluation will rely on directory structure + logs for HP tracking.
+    # For non-GA runs (save_processed_data=True), the path itself is a good identifier.
+    output_suffix = f"_processed_{experiment_name}"
+
+    print(f"\n[Pipeline Stage - Config: {experiment_name}] Loading data...")
     loader = DataLoader(train_path=train_path, test_path=test_path)
     train_data, test_data = loader.load_data()
 
@@ -81,11 +102,11 @@ def process_data(train_path, test_path, target_column,
 
     preprocessor = DataPreprocessor()
     
-    print(f"[Pipeline Stage - Chromosome: {experiment_name.replace('_', ',')}] Starting imputation ({imputation_method})...")
-    train_data = preprocessor.impute(train_data, method=imputation_method, **imputation_kwargs)
+    print(f"[Pipeline Stage - Config: {experiment_name}] Imputation ({imputation_method}, HPs: {imputation_params})...")
+    train_data = preprocessor.impute(train_data, method=imputation_method, **imputation_params)
     if test_data is not None and not test_data.empty:
-        test_data = preprocessor.impute(test_data, method=imputation_method, **imputation_kwargs)
-    print(f"[Pipeline Stage - Chromosome: {experiment_name.replace('_', ',')}] Imputation completed.")
+        test_data = preprocessor.impute(test_data, method=imputation_method, **imputation_params)
+    print(f"[Pipeline Stage - Config: {experiment_name}] Imputation completed.")
 
     potential_id_columns_process = [col for col in ['ID', 'id'] if col in train_data.columns and col != target_column]
     if potential_id_columns_process:
@@ -94,11 +115,12 @@ def process_data(train_path, test_path, target_column,
         if test_data is not None and not test_data.empty:
             test_data = test_data.drop(columns=potential_id_columns_process, errors='ignore')
 
-    print(f"[Pipeline Stage - Chromosome: {experiment_name.replace('_', ',')}] Starting outlier removal ({outlier_method})...")
+    print(f"[Pipeline Stage - Config: {experiment_name}] Outlier removal ({outlier_method}, HPs: {outlier_params})...")
     if outlier_method != 'none':
         train_data_before_outliers = train_data.copy()
         try:
-            remover = OutlierRemover(method=outlier_method, **outlier_kwargs) 
+            # Pass HPs to OutlierRemover constructor or method if it supports them
+            remover = OutlierRemover(method=outlier_method, **outlier_params) 
             features_for_removal = train_data.drop(columns=[target_column], errors='ignore')
             target_series_for_reconstruction = None
             if target_column in train_data.columns:
@@ -110,13 +132,10 @@ def process_data(train_path, test_path, target_column,
                 print(f"Warning: Outlier removal (method: {outlier_method}) resulted in an empty dataset. Reverting.")
                 train_data = train_data_before_outliers
             elif target_series_for_reconstruction is not None:
-                # Ensure index alignment for concatenation
                 cleaned_features_idx = cleaned_features.index
                 target_series_aligned = target_series_for_reconstruction.loc[target_series_for_reconstruction.index.intersection(cleaned_features_idx)]
                 cleaned_features_aligned = cleaned_features.loc[cleaned_features.index.intersection(target_series_aligned.index)]
-                
                 train_data = pd.concat([cleaned_features_aligned, target_series_aligned.rename(target_column)], axis=1)
-
             else:
                 train_data = cleaned_features
         except Exception as e:
@@ -124,25 +143,26 @@ def process_data(train_path, test_path, target_column,
             train_data = train_data_before_outliers
     else:
         print("Outlier removal skipped as method is 'none'.")
-    print(f"[Pipeline Stage - Chromosome: {experiment_name.replace('_', ',')}] Outlier removal completed.")
+    print(f"[Pipeline Stage - Config: {experiment_name}] Outlier removal completed.")
 
-    print(f"[Pipeline Stage - Chromosome: {experiment_name.replace('_', ',')}] Starting encoding ({encoding_method})...")
-    train_data = preprocessor.encode(train_data, method=encoding_method, target_col=target_column, **encoding_kwargs)
+    print(f"[Pipeline Stage - Config: {experiment_name}] Encoding ({encoding_method}, HPs: {encoding_params})...")
+    train_data = preprocessor.encode(train_data, method=encoding_method, target_col=target_column, **encoding_params)
     if test_data is not None and not test_data.empty:
-        test_data = preprocessor.encode(test_data, method=encoding_method, target_col=target_column, **encoding_kwargs)
-    print(f"[Pipeline Stage - Chromosome: {experiment_name.replace('_', ',')}] Encoding completed.")
+        test_data = preprocessor.encode(test_data, method=encoding_method, target_col=target_column, **encoding_params)
+    print(f"[Pipeline Stage - Config: {experiment_name}] Encoding completed.")
     
-    print(f"[Pipeline Stage - Chromosome: {experiment_name.replace('_', ',')}] Starting resampling ({resampling_method})...")
+    print(f"[Pipeline Stage - Config: {experiment_name}] Resampling ({resampling_method}, HPs: {resampling_params})...")
     if resampling_method != 'none':
         if target_column in train_data.columns:
             if not pd.api.types.is_numeric_dtype(train_data[target_column]):
                 print(f"Warning: Target column '{target_column}' is not numeric. Applying LabelEncoding before resampling.")
-                train_data = preprocessor._label_encode_target(train_data, target_column) # ensure target is numeric
+                train_data = preprocessor._label_encode_target(train_data, target_column)
             
             X_train_encoded = train_data.drop(columns=[target_column])
             y_train_encoded = train_data[target_column]
             
-            resampler = Resampler(method=resampling_method)
+            # Pass HPs to Resampler constructor or method
+            resampler = Resampler(method=resampling_method, **resampling_params)
             X_train_resampled, y_train_resampled = resampler.fit_resample(X_train_encoded, y_train_encoded)
             
             train_data = pd.concat([pd.DataFrame(X_train_resampled, columns=X_train_encoded.columns), 
@@ -151,9 +171,9 @@ def process_data(train_path, test_path, target_column,
             print(f"Warning: Target column '{target_column}' not found. Skipping resampling.")
     else:
         print("Resampling method is 'none'. Skipping resampling step.")
-    print(f"[Pipeline Stage - Chromosome: {experiment_name.replace('_', ',')}] Resampling completed.")
+    print(f"[Pipeline Stage - Config: {experiment_name}] Resampling completed.")
 
-    print(f"[Pipeline Stage - Chromosome: {experiment_name.replace('_', ',')}] Starting scaling ({scaling_method})...")
+    print(f"[Pipeline Stage - Config: {experiment_name}] Scaling ({scaling_method}, HPs: {scaling_params})...")
     if scaling_method != 'none' and scaling_method in ['standard', 'minmax']:
         if target_column not in train_data.columns:
             print(f"CRITICAL WARNING: Target column '{target_column}' not found in train_data before scaling. Skipping scaling.")
@@ -163,9 +183,9 @@ def process_data(train_path, test_path, target_column,
 
             scaler_instance = None
             if scaling_method == 'standard':
-                scaler_instance = StandardScaler(**scaling_kwargs)
+                scaler_instance = StandardScaler(**scaling_params) # Pass HPs
             elif scaling_method == 'minmax':
-                scaler_instance = MinMaxScaler(**scaling_kwargs)
+                scaler_instance = MinMaxScaler(**scaling_params) # Pass HPs (though minmax has few common HPs)
 
             if scaler_instance:
                 try:
@@ -207,16 +227,8 @@ def process_data(train_path, test_path, target_column,
                     print(f"Error during scaling: {e}. Skipping scaling.")
     elif scaling_method != 'none':
         print(f"Warning: Unknown scaling method '{scaling_method}'. Scaling skipped.")
-    print(f"[Pipeline Stage - Chromosome: {experiment_name.replace('_', ',')}] Scaling completed.")
-
-    filename_suffix_parts = [imputation_method, outlier_method, encoding_method, resampling_method]
-    if scaling_method != 'none':
-        filename_suffix_parts.append(scaling_method)
-    output_suffix = f"_processed_{'_'.join(filename_suffix_parts)}"
+    print(f"[Pipeline Stage - Config: {experiment_name}] Scaling completed.")
     
-    processed_train_df = train_data # Keep DataFrame in memory
-    processed_test_df = test_data  # Keep DataFrame in memory
-
     train_data_path_out = None
     test_data_path_out = None
 
@@ -224,20 +236,21 @@ def process_data(train_path, test_path, target_column,
         train_data_path_out = os.path.join(results_path, f'train{output_suffix}.csv')
         test_data_path_out = os.path.join(results_path, f'test{output_suffix}.csv')
         
-        processed_train_df.to_csv(train_data_path_out, index=False)
-        if processed_test_df is not None and not processed_test_df.empty:
-            processed_test_df.to_csv(test_data_path_out, index=False)
+        train_data.to_csv(train_data_path_out, index=False)
+        if test_data is not None and not test_data.empty:
+            test_data.to_csv(test_data_path_out, index=False)
         else:
-            test_data_path_out = None # Ensure it's None if not saved
-        print(f"[Pipeline Stage - Chromosome: {experiment_name.replace('_', ',')}] Data processing complete. Processed files saved to: {results_path}")
+            test_data_path_out = None 
+        print(f"[Pipeline Stage - Config: {experiment_name}] Data processing complete. Processed files saved to: {results_path}")
+        return train_data_path_out, test_data_path_out, research_path # Return paths
     else:
-        print(f"[Pipeline Stage - Chromosome: {experiment_name.replace('_', ',')}] Data processing complete. Processed data NOT saved to disk (GA mode).")
-        # Paths will be None, but dataframes are returned
+        print(f"[Pipeline Stage - Config: {experiment_name}] Data processing complete. Processed data NOT saved (GA mode).")
+        return train_data, test_data, research_path # Return DataFrames
 
     # analyze_target_correlations was commented out, so not re-adding here for now.
     
     # Return DataFrames directly if not saving, otherwise paths
     if not save_processed_data:
-        return processed_train_df, processed_test_df, research_path
+        return train_data, test_data, research_path
     else:
         return train_data_path_out, test_data_path_out, research_path 

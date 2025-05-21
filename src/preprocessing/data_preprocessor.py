@@ -184,49 +184,43 @@ class DataPreprocessor:
         cols = [col for col in self.cat_columns if col != target_col and col in data.columns]
         return cols
 
-    def _onehot_encode(self, data, cols_to_encode):
-        """Encode specified columns using one-hot encoding."""
+    def _onehot_encode(self, data, cols_to_encode, max_cardinality_threshold=50, drop=None):
+        """Encode specified columns using one-hot encoding with cardinality check and drop strategy."""
         if not cols_to_encode:
             return data
 
         data = data.copy()
         encoder_key = 'onehot'
         
-        # Filter out high cardinality columns before fitting the encoder
         low_cardinality_cols = []
         skipped_cols = []
-        MAX_OH_CARDINALITY = 50 # Max unique values for OneHotEncoding
         for col in cols_to_encode:
-            if data[col].nunique(dropna=False) <= MAX_OH_CARDINALITY:
+            if data[col].nunique(dropna=False) <= max_cardinality_threshold:
                 low_cardinality_cols.append(col)
             else:
                 skipped_cols.append(col)
         
         if not low_cardinality_cols:
             if skipped_cols:
-                print(f"Warning: OneHotEncoding skipped for all specified columns due to high cardinality: {skipped_cols}. Columns to encode: {cols_to_encode}")
-            return data # Return original data if no columns are suitable
+                print(f"Warning: OneHotEncoding skipped for all specified columns due to high cardinality (> {max_cardinality_threshold}): {skipped_cols}.")
+            return data
         
         if skipped_cols:
-            print(f"Warning: OneHotEncoding skipped for high cardinality columns: {skipped_cols}. Applied to: {low_cardinality_cols}")
+            print(f"Warning: OneHotEncoding skipped for high cardinality columns (> {max_cardinality_threshold}): {skipped_cols}. Applied to: {low_cardinality_cols}")
 
         if encoder_key not in self.encoders:
-            # Fit encoder only on low cardinality columns
             self.encoders[encoder_key] = OneHotEncoder(
                 handle_unknown='ignore',
-                sparse_output=False, # Still potentially memory intensive if many low_card_cols generate many features
-                drop=None
+                sparse_output=False,
+                drop=drop # Use passed drop strategy
             )
-            # Ensure fitting with string type to be consistent
             self.encoders[encoder_key].fit(data[low_cardinality_cols].astype(str))
 
         encoder = self.encoders[encoder_key]
-        # Transform only low cardinality columns
         encoded = encoder.transform(data[low_cardinality_cols].astype(str))
         new_cols = encoder.get_feature_names_out(low_cardinality_cols)
         encoded_df = pd.DataFrame(encoded, columns=new_cols, index=data.index)
         
-        # Drop the original low_cardinality_cols that were encoded, keep skipped_cols and other columns
         data_remaining = data.drop(columns=low_cardinality_cols)
         return pd.concat([data_remaining, encoded_df], axis=1)
 
@@ -281,19 +275,19 @@ class DataPreprocessor:
             new_data_list.append(new_line)
         return new_data_list
 
-    def _lsa_encode(self, data, cols_to_encode, n_components):
-        """Encode specified columns using LSA."""
+    def _lsa_encode(self, data, cols_to_encode, n_components=10, ngram_range=(1,1)):
+        """Encode specified columns using LSA with n_components and ngram_range."""
         if not cols_to_encode:
             return data
         data = data.copy()
-        if self.lsa_vectorizer is None:
+        if self.lsa_vectorizer is None: # Fit only once
             texts = self._categorical_to_texts(data, cols_to_encode)
-            self.lsa_vectorizer = TfidfVectorizer(ngram_range=(1, 2), min_df=5, max_df=0.5)
+            self.lsa_vectorizer = TfidfVectorizer(ngram_range=ngram_range, min_df=5, max_df=0.5) # Use passed ngram_range
             term_doc_matrix = self.lsa_vectorizer.fit_transform(texts)
-            self.lsa_svd = TruncatedSVD(n_components=n_components, random_state=42)
+            self.lsa_svd = TruncatedSVD(n_components=n_components, random_state=42) # Use passed n_components
             lsa_embeddings = self.lsa_svd.fit_transform(term_doc_matrix)
             self.lsa_feature_names = [f'LSA_{i+1}' for i in range(n_components)]
-        else:
+        else: # Transform using existing
             texts = self._categorical_to_texts(data, cols_to_encode)
             term_doc_matrix = self.lsa_vectorizer.transform(texts)
             lsa_embeddings = self.lsa_svd.transform(term_doc_matrix)
@@ -408,52 +402,46 @@ class DataPreprocessor:
         
         numeric_cols_with_na = [col for col in numeric_cols if data_imputed[col].isnull().any()]
         if not numeric_cols_with_na:
-            # print("No numerical columns with NAs to impute.")
             pass
         elif method == 'median':
-            # print(f"Applying median imputation to numeric columns: {numeric_cols_with_na}")
             for col in numeric_cols_with_na:
                 data_imputed = self._impute_numerical_with_median(data_imputed, col)
         elif method == 'knn':
-            # print(f"Applying KNNImputer to numeric columns: {numeric_cols_with_na}")
-            n_neighbors = kwargs.get('n_neighbors', 5)
-            imputer_knn = KNNImputer(n_neighbors=n_neighbors)
+            # n_neighbors is now passed via kwargs from process_data
+            imputer_knn = KNNImputer(**kwargs) # Pass all relevant HPs for KNN
             data_imputed[numeric_cols_with_na] = imputer_knn.fit_transform(data_imputed[numeric_cols_with_na])
         elif method == 'missforest':
             if MISSFOREST_AVAILABLE:
-                # print(f"Applying MissForest. This might take a while...")
                 mf_input_data = data_imputed.copy()
                 for col in mf_input_data.columns:
                     if mf_input_data[col].dtype == 'object':
                         mf_input_data[col] = pd.Categorical(mf_input_data[col])
                 if not mf_input_data.isnull().any().any():
-                    # print("No NAs remaining for MissForest after categorical mode imputation.")
                     pass
                 else:
                     try:
-                        imputer_mf = MissForest(random_state=42, **kwargs.get('missforest_kwargs', {}))
+                        # Pass relevant HPs like n_estimators, max_iter via kwargs
+                        imputer_mf = MissForest(random_state=42, **kwargs) 
                         imputed_values = imputer_mf.fit_transform(mf_input_data)
-                        data_imputed = pd.DataFrame(imputed_values, columns=mf_input_data.columns)
+                        data_imputed = pd.DataFrame(imputed_values, columns=mf_input_data.columns, index=mf_input_data.index) # Added index
                         for col in data.columns: 
                             if col in data_imputed.columns and data[col].dtype != data_imputed[col].dtype:
                                 try:
                                     data_imputed[col] = data_imputed[col].astype(data[col].dtype, errors='ignore')
                                     if pd.api.types.is_numeric_dtype(data[col]) and not pd.api.types.is_numeric_dtype(data_imputed[col]):
-                                         data_imputed[col] = pd.to_numeric(data_imputed[col], errors='coerce') # Coerce will turn problematic to NaN
+                                         data_imputed[col] = pd.to_numeric(data_imputed[col], errors='coerce')
                                 except Exception as e_dtype:
                                     print(f"Warning: Could not restore dtype for column {col} after MissForest: {e_dtype}")
-                        # print("MissForest imputation completed.")
                     except Exception as e_mf:
                         print(f"Error during MissForest imputation: {e_mf}.")
                         numeric_still_na = [nc for nc in numeric_cols if data_imputed[nc].isnull().any()]
                         if numeric_still_na:
-                            # print("MissForest failed, falling back to IterativeImputer for remaining numeric columns.")
-                            iter_imputer = IterativeImputer(estimator=RandomForestRegressor(random_state=42),random_state=42,**kwargs.get('iterativeimputer_kwargs', {}))
+                            iter_imputer = IterativeImputer(estimator=RandomForestRegressor(random_state=42),random_state=42,**kwargs) # Pass HPs to IterativeImputer too
                             data_imputed[numeric_still_na] = iter_imputer.fit_transform(data_imputed[numeric_still_na])
             else: 
-                # print("MissForest not available, using IterativeImputer for numeric columns with NAs.")
                 if numeric_cols_with_na:
-                    iter_imputer = IterativeImputer(estimator=RandomForestRegressor(random_state=42),random_state=42,**kwargs.get('iterativeimputer_kwargs', {}))
+                    # Pass relevant HPs (though IterativeImputer HPs might differ slightly from MissForest direct HPs)
+                    iter_imputer = IterativeImputer(estimator=RandomForestRegressor(random_state=42),random_state=42,**kwargs) 
                     data_imputed[numeric_cols_with_na] = iter_imputer.fit_transform(data_imputed[numeric_cols_with_na])
         elif method not in ['median', 'knn', 'missforest']:
             raise ValueError(f"Unknown imputation method: {method}")
@@ -462,126 +450,60 @@ class DataPreprocessor:
             print("Warning: NAs still present after imputation process.")
             print(data_imputed.isnull().sum()[data_imputed.isnull().sum() > 0])
         else:
-            # print("Imputation completed. No NAs remaining.")
             pass
         return data_imputed
 
     def encode(self, data, method='label', target_col=None, **kwargs):
         """
-        Encode categorical features (excluding target unless method='target').
-        Target column is encoded separately using _label_encode_target if needed.
+        Encode categorical features. HPs passed via **kwargs.
+        'onehot' HPs: max_cardinality_threshold, drop
+        'lsa' HPs: n_components, ngram_range (tuple, e.g., (1,2))
+        'word2vec'/'embedding' HPs: embedding_dim, window (used by word2vec blocks)
         """
-        encoded_data = data.copy() # Initialize encoded_data here
+        encoded_data = data.copy()
 
         if not self.cat_columns and not self.numeric_columns:
-            self._get_column_types(encoded_data) # Use encoded_data
+            self._get_column_types(encoded_data)
 
-        active_cat_cols = self._get_active_cat_cols(encoded_data, target_col, method) # Use encoded_data
-        if not active_cat_cols and method not in ['target', 'leaveoneout']: # Adjusted condition for LOOE
-             # print(f"No active categorical columns to encode with method '{method}'. Returning original data.")
-             return encoded_data # Return the copy
+        active_cat_cols = self._get_active_cat_cols(encoded_data, target_col, method)
+        if not active_cat_cols and method not in ['target', 'leaveoneout']:
+             return encoded_data
 
         if method == 'onehot':
-            encoded_data = self._onehot_encode(encoded_data, active_cat_cols) # Pass and reassign encoded_data
+            # Extract OneHot specific HPs from kwargs, provide defaults if not present
+            onehot_hps = {
+                'max_cardinality_threshold': kwargs.get('max_cardinality_threshold', 50),
+                'drop': kwargs.get('drop', None)
+            }
+            encoded_data = self._onehot_encode(encoded_data, active_cat_cols, **onehot_hps)
         elif method == 'label':
-            encoded_data = self._label_encode(encoded_data, active_cat_cols) # Pass and reassign
+            encoded_data = self._label_encode(encoded_data, active_cat_cols)
         elif method == 'ordinal':
-             encoded_data = self._ordinal_encode(encoded_data, active_cat_cols) # Pass and reassign
+             encoded_data = self._ordinal_encode(encoded_data, active_cat_cols)
         elif method == 'lsa':
-            n_components = kwargs.get('n_components', 10)
-            encoded_data = self._lsa_encode(encoded_data, active_cat_cols, n_components=n_components) # Pass and reassign
-        elif method == 'embedding': # This is one of the word2vec blocks
+            # Extract LSA specific HPs
+            lsa_hps = {
+                'n_components': kwargs.get('n_components', 10),
+                'ngram_range': kwargs.get('ngram_range', (1,1))
+            }
+            encoded_data = self._lsa_encode(encoded_data, active_cat_cols, **lsa_hps)
+        elif method == 'embedding' or method == 'word2vec': # Consolidate word2vec logic
             if not GENSIM_AVAILABLE:
-                print("Word2Vec encoding (via 'embedding') skipped: Gensim library not available.")
-                return encoded_data # Return current encoded_data
+                print(f"Word2Vec/Embedding encoding ('{method}') skipped: Gensim library not available.")
+                return encoded_data
 
-            self.word2vec_dims = kwargs.get('embedding_dim', self.word2vec_dims)
+            # Extract Word2Vec HPs
+            self.word2vec_dims = kwargs.get('embedding_dim', self.word2vec_dims) # Fallback to class default if not in kwargs
+            w2v_window = kwargs.get('window', 1) # Default window to 1 if not specified, as per prior logic
+            
             if self.word2vec_dims <= 0:
-                print("Word2Vec encoding (via 'embedding') skipped: embedding_dim must be > 0.")
+                print(f"Word2Vec/Embedding encoding ('{method}') skipped: embedding_dim must be > 0.")
                 return encoded_data
             
             if not active_cat_cols:
-                # print("Word2Vec (via 'embedding') skipped: No categorical columns for encoding.")
                 return encoded_data
 
-            # print(f"Applying Word2Vec (via 'embedding') with embedding_dim={self.word2vec_dims} for columns: {active_cat_cols}")
-            
-            processed_cols_w2v = [] # Keep track of columns successfully processed by Word2Vec
-            for col in active_cat_cols:
-                # Ensure column data is a list of lists of strings for Word2Vec
-                # Each category value is treated as a single 'word' in its own 'sentence'
-                # Convert to string and fill NA to handle all cases before .apply
-                sentences = encoded_data[col].astype(str).fillna('__NULL_W2V__').apply(lambda x: [x]).tolist()
-                
-                if not sentences: # Should not happen if active_cat_cols is not empty, but as a safeguard
-                    print(f"Skipping Word2Vec for column '{col}' due to no data/sentences.")
-                    continue
-
-                # Train Word2Vec model for the current column
-                # window=1 as each category is its own context. min_count=1 to include all categories.
-                # sg=1 for Skip-gram model, often better for infrequent words (categories)
-                try:
-                    w2v_model = Word2Vec(sentences=sentences, vector_size=self.word2vec_dims, window=1, min_count=1, workers=4, sg=1, seed=42)
-                    self.word2vec_models[col] = w2v_model
-                    
-                    # Create embedding features for the column
-                    embedding_vectors = []
-                    for val_list in sentences: # val_list is like ['category_value']
-                        word = val_list[0]
-                        if word in w2v_model.wv:
-                            embedding_vectors.append(w2v_model.wv[word])
-                        else:
-                            # This case should be rare with min_count=1 if word was in training sentences
-                            # and not '__NULL_W2V__' if all values were null.
-                            # If __NULL_W2V__ was the only word, it gets an embedding. Else, zero vector for safety.
-                            embedding_vectors.append(np.zeros(self.word2vec_dims))
-                    
-                    embedding_df = pd.DataFrame(embedding_vectors, index=encoded_data.index)
-                    embedding_df.columns = [f'{col}_w2v_{i}' for i in range(self.word2vec_dims)]
-                    
-                    # Concatenate new embedding features and mark original column for dropping
-                    encoded_data = pd.concat([encoded_data, embedding_df], axis=1)
-                    processed_cols_w2v.append(col)
-                except Exception as e_w2v:
-                    print(f"Error training or applying Word2Vec for column '{col}': {e_w2v}. Column will be skipped.")
-            
-            # Drop original categorical columns that were successfully processed by Word2Vec
-            if processed_cols_w2v:
-                encoded_data = encoded_data.drop(columns=processed_cols_w2v)
-                print(f"Dropped original Word2Vec processed columns: {processed_cols_w2v}")
-        elif method == 'leaveoneout':
-            if target_col is None or target_col not in data.columns:
-                raise ValueError("LeaveOneOutEncoder requires a target column specified and present in data.")
-            
-            # Use encoded_data for LOOE, not original 'data'
-            temp_target_series = encoded_data[target_col]
-            if not pd.api.types.is_numeric_dtype(temp_target_series):
-                print(f"Target column '{target_col}' for LOOE is categorical. Applying temporary LabelEncoding.")
-                le_target = LabelEncoder()
-                temp_target_series = le_target.fit_transform(temp_target_series)
-
-            looe = LeaveOneOutEncoder(cols=active_cat_cols, sigma=kwargs.get('sigma', 0.05))
-            # Ensure fit_transform is on the correct DataFrame columns
-            encoded_looe_df = pd.DataFrame(looe.fit_transform(encoded_data[active_cat_cols], temp_target_series), columns=active_cat_cols, index=encoded_data.index)
-            # Update the columns in encoded_data, don't just assign the result to encoded_data directly if it only contains the encoded cols
-            for col in active_cat_cols:
-                encoded_data[col] = encoded_looe_df[col]
-            self.encoders['leaveoneout'] = looe
-        elif method == 'word2vec': # This is the second word2vec block
-            if not GENSIM_AVAILABLE:
-                print("Word2Vec encoding skipped: Gensim library not available.")
-                return encoded_data # Return current encoded_data
-
-            self.word2vec_dims = kwargs.get('embedding_dim', self.word2vec_dims)
-            if self.word2vec_dims <= 0:
-                print("Word2Vec encoding skipped: embedding_dim must be > 0.")
-                return encoded_data
-
-            if not active_cat_cols:
-                # print("Word2Vec skipped: No categorical columns identified for encoding.")
-                return encoded_data
-
-            # print(f"Applying Word2Vec with embedding_dim={self.word2vec_dims} for columns: {active_cat_cols}")
+            print(f"Applying Word2Vec/Embedding ('{method}') with embedding_dim={self.word2vec_dims}, window={w2v_window} for columns: {active_cat_cols}")
             
             processed_cols_w2v = []
             for col in active_cat_cols:
@@ -591,7 +513,9 @@ class DataPreprocessor:
                     print(f"Skipping Word2Vec for column '{col}' due to no data/sentences after processing.")
                     continue
                 try:
-                    w2v_model = Word2Vec(sentences=sentences, vector_size=self.word2vec_dims, window=1, min_count=1, workers=4, sg=1, seed=42)
+                    w2v_model = Word2Vec(sentences=sentences, vector_size=self.word2vec_dims, 
+                                         window=w2v_window, # Use HP
+                                         min_count=1, workers=4, sg=1, seed=42)
                     self.word2vec_models[col] = w2v_model
                     embedding_vectors = []
                     for val_list in sentences:
@@ -611,7 +535,23 @@ class DataPreprocessor:
             if processed_cols_w2v:
                 encoded_data = encoded_data.drop(columns=processed_cols_w2v)
                 print(f"Dropped original Word2Vec processed columns: {processed_cols_w2v}")
+        elif method == 'leaveoneout':
+            if target_col is None or target_col not in data.columns:
+                raise ValueError("LeaveOneOutEncoder requires a target column specified and present in data.")
+            
+            temp_target_series = encoded_data[target_col]
+            if not pd.api.types.is_numeric_dtype(temp_target_series):
+                print(f"Target column '{target_col}' for LOOE is categorical. Applying temporary LabelEncoding.")
+                le_target = LabelEncoder()
+                temp_target_series = le_target.fit_transform(temp_target_series)
+
+            looe_sigma = kwargs.get('sigma', 0.05) # Example HP for LOOE
+            looe = LeaveOneOutEncoder(cols=active_cat_cols, sigma=looe_sigma)
+            encoded_looe_df = pd.DataFrame(looe.fit_transform(encoded_data[active_cat_cols], temp_target_series), columns=active_cat_cols, index=encoded_data.index)
+            for col_name in active_cat_cols: # Corrected variable name
+                encoded_data[col_name] = encoded_looe_df[col_name]
+            self.encoders['leaveoneout'] = looe
         else:
-            raise ValueError(f"Unknown encoding method: {method}. Use 'onehot', 'label', 'ordinal', 'lsa', 'embedding', or 'leaveoneout'.")
+            raise ValueError(f"Unknown encoding method: {method}. Use 'onehot', 'label', 'ordinal', 'lsa', 'embedding', 'word2vec', or 'leaveoneout'.")
 
         return encoded_data 
