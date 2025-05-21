@@ -357,15 +357,39 @@ def train_model(train_data_input, test_data_input, target_column, research_path,
 
     os.makedirs(research_path, exist_ok=True)
     
+    # Load data if paths are provided
+    current_train_data = train_data_input
+    if isinstance(train_data_input, str):
+        try:
+            current_train_data = pd.read_csv(train_data_input)
+            print(f"Loaded training data from path: {train_data_input}")
+        except Exception as e:
+            print(f"Error loading training data from path {train_data_input}: {e}")
+            return None, None # Cannot proceed without training data
+    
+    current_test_data = test_data_input
+    if isinstance(test_data_input, str):
+        try:
+            current_test_data = pd.read_csv(test_data_input)
+            print(f"Loaded test data from path: {test_data_input}")
+        except FileNotFoundError:
+            print(f"Test data file not found at {test_data_input}. Proceeding without test data (will use validation split from train).")
+            current_test_data = pd.DataFrame() # Ensure it's an empty DF, not None
+        except Exception as e:
+            print(f"Error loading test data from path {test_data_input}: {e}")
+            # Decide if you want to proceed with validation split or error out
+            current_test_data = pd.DataFrame() # Or return None, None if test data is critical and loading fails
+
     # Create ModelTrainer instance
     trainer = ModelTrainer(model_type=model_type, model_hyperparameters=model_hyperparameters, random_state=42)
     
     metrics, feature_importance = trainer.train(
-        train_data_input, 
-        test_data_input, 
+        current_train_data, 
+        current_test_data, 
         target_column,
             output_path=research_path, 
-            plot_learning_curves=plot_learning_curves
+            plot_learning_curves=plot_learning_curves,
+            save_run_results=save_run_results # Pass the flag through
         )
     
     if metrics:
@@ -376,18 +400,21 @@ def train_model(train_data_input, test_data_input, target_column, research_path,
         # if 'classification_report' in metrics:
             # print(pd.DataFrame(metrics['classification_report']).transpose())
         
-        if save_run_results:
-            dataset_name_for_saving = research_path.split(os.sep)[-2] if len(research_path.split(os.sep)) > 1 else "unknown_dataset"
-            run_name = research_path.split(os.sep)[-1]
-            save_model_results(
-                metrics,
-                model_type,
-                dataset_name_for_saving,
-                run_name,
-                base_dir="research", # Ensure this matches the structure where save_model_results expects to save
-                hyperparameters=model_hyperparameters, # Save HPs used
-                feature_importance_df=feature_importance
-            )
+        # The following block for save_model_results is intentionally commented out
+        # as ModelTrainer now handles its own results saving.
+        # if save_run_results: 
+        #     dataset_name_for_saving = research_path.split(os.sep)[-2] if len(research_path.split(os.sep)) > 1 else "unknown_dataset"
+        #     run_name = research_path.split(os.sep)[-1]
+        #     save_model_results(
+        #         metrics,
+        #         model_type,
+        #         dataset_name_for_saving,
+        #         run_name,
+        #         base_dir="research", 
+        #         hyperparameters=model_hyperparameters, 
+        #         feature_importance_df=feature_importance
+        #     )
+        pass # Added pass to ensure the if metrics: block is not empty if all internals are commented
     else:
         print("Model training did not produce metrics.")
     
@@ -395,8 +422,8 @@ def train_model(train_data_input, test_data_input, target_column, research_path,
 
 def main():
     print("\n=== Processing credit score classification dataset (Single Run Example with HPs) ===")
-    train_path = "datasets/credit-score-classification/train.csv"
-    test_path = "datasets/credit-score-classification/test.csv"
+    train_path = "datasets/credit-score-classification-manual-cleaned.csv"
+    test_path = None
     target_column = "Credit_Score"
     generate_learning_curves = False 
 
@@ -460,16 +487,18 @@ def main():
 
         if metrics_output:
             print(f"\n--- Single Run Final Metrics for {decoded_params['model_type']} ({example_chromosome}) ---")
-            eval_key_single = 'test' if 'test' in metrics_output and metrics_output['test'] else 'validation'
-            # Ensure eval_key_single maps to an existing key and its value is not None
-            if eval_key_single in metrics_output and metrics_output[eval_key_single]: 
-                pr_auc_score = metrics_output[eval_key_single].get('pr_auc', -1)
-                if pr_auc_score is not None and pr_auc_score != -1:
-                    print(f"Evaluation PR AUC: {pr_auc_score:.4f}")
-                else:
-                    print("Evaluation PR AUC not available or is invalid for the single run.")
+            # metrics_output is a flat dictionary, access 'auprc' directly
+            auprc_score = metrics_output.get('auprc')
+
+            if auprc_score is not None and not pd.isna(auprc_score):
+                print(f"Evaluation AUPRC: {auprc_score:.4f}")
             else:
-                print("Evaluation metrics (test/validation) missing or None for the single run.")
+                # Check for other potential primary metrics if auprc is missing/NaN, for more informative message
+                accuracy_score = metrics_output.get('accuracy')
+                if accuracy_score is not None and not pd.isna(accuracy_score):
+                    print(f"Evaluation AUPRC not available or is invalid. Accuracy: {accuracy_score:.4f}")
+                else:
+                    print("Evaluation AUPRC and Accuracy are not available or are invalid for the single run.")
         else:
             print("Single run model training did not produce metrics.")
         print(f"[Single Run - Chromosome: {example_chromosome}] Model training and metric display complete.")
@@ -482,5 +511,5 @@ def main():
 if __name__ == "__main__":
     # main()
     # To run the GA, you would call a function from ga_optimizer.py, e.g.:
-    # ga_optimizer.run_genetic_algorithm() # Assuming run_genetic_algorithm is defined in ga_optimizer.py 
-    main()
+    ga_optimizer.run_genetic_algorithm() # Assuming run_genetic_algorithm is defined in ga_optimizer.py 
+    # main()

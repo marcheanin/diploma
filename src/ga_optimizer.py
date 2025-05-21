@@ -220,8 +220,12 @@ def evaluate_chromosome(chromosome_genes, train_path_ga, test_path_ga, target_co
 def run_genetic_algorithm():
     """Main function to set up and run the genetic algorithm."""
     print("\n=== Setting up GA for Credit Score Dataset ===")
-    train_path = "datasets/credit-score-classification/train.csv"
-    test_path = "datasets/credit-score-classification/test.csv"
+    # train_path = "datasets/credit-score-classification/train.csv"
+    # test_path = "datasets/credit-score-classification/test.csv"
+    # target_column = "Credit_Score"
+
+    train_path = "datasets/credit-score-classification-manual-cleaned.csv"
+    test_path = None
     target_column = "Credit_Score"
     
     generate_learning_curves = False
