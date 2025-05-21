@@ -394,10 +394,10 @@ def train_model(train_data_input, test_data_input, target_column, research_path,
     return metrics, feature_importance
 
 def main():
-    print("\n=== Processing credit card dataset (Single Run Example with HPs) ===")
-    train_path = "datasets/UCI_Credit_Card.csv"
-    test_path = None # "datasets/UCI_Credit_Card.csv" # Can use same for test to check flow
-    target_column = "default.payment.next.month"
+    print("\n=== Processing credit score classification dataset (Single Run Example with HPs) ===")
+    train_path = "datasets/credit-score-classification/train.csv"
+    test_path = "datasets/credit-score-classification/test.csv"
+    target_column = "Credit_Score"
     generate_learning_curves = False 
 
     # Example Chromosome (19 genes):
@@ -482,4 +482,5 @@ def main():
 if __name__ == "__main__":
     # main()
     # To run the GA, you would call a function from ga_optimizer.py, e.g.:
-    ga_optimizer.run_genetic_algorithm() # Assuming run_genetic_algorithm is defined in ga_optimizer.py 
+    # ga_optimizer.run_genetic_algorithm() # Assuming run_genetic_algorithm is defined in ga_optimizer.py 
+    main()

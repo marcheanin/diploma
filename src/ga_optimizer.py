@@ -23,8 +23,8 @@ from main import (
 )
 
 # --- GA Parameters ---
-POPULATION_SIZE = 15
-NUM_GENERATIONS = 10 
+POPULATION_SIZE = 5
+NUM_GENERATIONS = 2 
 # CROSSOVER_RATE = 0.8 
 # MUTATION_RATE = 0.1 
 
@@ -131,7 +131,7 @@ def evaluate_chromosome(chromosome_genes, train_path_ga, test_path_ga, target_co
             model_type=current_model_type,
             model_hyperparameters=current_model_params, # Pass model HPs
             plot_learning_curves=gen_learning_curves_ga,
-            save_run_results=False 
+            save_run_results=False # Explicitly set to False for GA runs
         )
 
         if metrics_output:
@@ -153,34 +153,53 @@ def evaluate_chromosome(chromosome_genes, train_path_ga, test_path_ga, target_co
                         print(f"Warning: AUPRC for chromosome {chromosome_genes} (eval set: {eval_set_key_used}) is None/NaN. Assigning low fitness.")
                         fitness = -0.5 
                     else:
+                        fitness_metric_name = "AUPRC"
                         print(f"Model training completed for {chromosome_genes} (eval set: {eval_set_key_used}). Fitness (AUPRC): {fitness:.4f}")
-                elif 'accuracy' in metric_source_dict: # Fallback to accuracy if auprc is missing
+                elif 'average_precision_weighted' in metric_source_dict and current_model_type != 'neural_network': 
+                    fitness = metric_source_dict['average_precision_weighted']
+                    fitness_metric_name = "Avg_Precision_Weighted"
+                    if fitness is None or pd.isna(fitness):
+                        print(f"Warning: Weighted Average Precision for {chromosome_genes} (eval set: {eval_set_key_used}) is None/NaN. Assigning low fitness.")
+                        fitness = -0.6
+                    else:
+                        print(f"Model training completed for {chromosome_genes} (eval set: {eval_set_key_used}). Fitness (Avg Precision Weighted): {fitness:.4f}")
+                elif 'accuracy' in metric_source_dict: # Fallback to accuracy if other primary metrics are missing
                     fitness = metric_source_dict['accuracy'] 
                     fitness_metric_name = "Accuracy"
-                    print(f"Warning: AUPRC not found in '{eval_set_key_used}' dict for chromosome {chromosome_genes}. Using Accuracy: {fitness:.4f} as fitness.")
+                    print(f"Warning: AUPRC and Avg_Precision_Weighted not found in '{eval_set_key_used}' dict for chromosome {chromosome_genes}. Using Accuracy: {fitness:.4f} as fitness.")
                     if fitness is None or pd.isna(fitness):
                         fitness = -0.7 # Low fitness for NaN accuracy
                 else:
-                    print(f"Core fitness metrics (AUPRC, Accuracy) not found in '{eval_set_key_used}' dict for chromosome {chromosome_genes}. Keys: {metric_source_dict.keys()}. Assigning low fitness.")
+                    print(f"Core fitness metrics (AUPRC, Avg_Precision_Weighted, Accuracy) not found in '{eval_set_key_used}' dict for chromosome {chromosome_genes}. Keys: {metric_source_dict.keys()}. Assigning low fitness.")
                     fitness = -0.85
             else: # Fallback path: metrics might be in a flat structure directly under metrics_output
                 if 'auprc' in metrics_output:
                     fitness = metrics_output['auprc']
                     eval_set_key_used = 'top-level'
+                    fitness_metric_name = "AUPRC"
                     if fitness is None or pd.isna(fitness):
                         print(f"Warning: AUPRC for chromosome {chromosome_genes} (eval set: {eval_set_key_used}) is None/NaN. Assigning low fitness.")
                         fitness = -0.51 
                     else:
                         print(f"Model training completed for {chromosome_genes} (eval set: {eval_set_key_used}). Fitness (AUPRC): {fitness:.4f}")
+                elif 'average_precision_weighted' in metrics_output and current_model_type != 'neural_network':
+                    fitness = metrics_output['average_precision_weighted']
+                    fitness_metric_name = "Avg_Precision_Weighted"
+                    eval_set_key_used = 'top-level'
+                    if fitness is None or pd.isna(fitness):
+                        print(f"Warning: Weighted Average Precision for {chromosome_genes} (eval set: {eval_set_key_used}) is None/NaN. Assigning low fitness.")
+                        fitness = -0.61
+                    else:
+                        print(f"Model training completed for {chromosome_genes} (eval set: {eval_set_key_used}). Fitness (Avg Precision Weighted): {fitness:.4f}")
                 elif 'accuracy' in metrics_output: # Fallback to accuracy in flat structure
                     fitness = metrics_output['accuracy']
                     fitness_metric_name = "Accuracy"
                     eval_set_key_used = 'top-level'
-                    print(f"Warning: AUPRC not found at top-level for chromosome {chromosome_genes}. Using Accuracy: {fitness:.4f} as fitness.")
+                    print(f"Warning: AUPRC and Avg_Precision_Weighted not found at top-level for chromosome {chromosome_genes}. Using Accuracy: {fitness:.4f} as fitness.")
                     if fitness is None or pd.isna(fitness):
                         fitness = -0.71 # Low fitness for NaN accuracy at top-level
                 else:
-                    print(f"Neither nested eval dict nor top-level AUPRC/Accuracy found in metrics_output for chromosome {chromosome_genes}. Metric Keys: {metrics_output.keys()}. Assigning low fitness.")
+                    print(f"Neither nested eval dict nor top-level AUPRC/Avg_Prec_Weighted/Accuracy found in metrics_output for chromosome {chromosome_genes}. Metric Keys: {metrics_output.keys()}. Assigning low fitness.")
                     fitness = -0.8
         else:
             print(f"Model training failed or did not produce metrics for chromosome {chromosome_genes}. Assigning low fitness.")
@@ -201,9 +220,9 @@ def evaluate_chromosome(chromosome_genes, train_path_ga, test_path_ga, target_co
 def run_genetic_algorithm():
     """Main function to set up and run the genetic algorithm."""
     print("\n=== Setting up GA for Credit Score Dataset ===")
-    train_path = "datasets/diabetes.csv"
-    test_path = None
-    target_column = "Outcome"
+    train_path = "datasets/credit-score-classification/train.csv"
+    test_path = "datasets/credit-score-classification/test.csv"
+    target_column = "Credit_Score"
     
     generate_learning_curves = False
 

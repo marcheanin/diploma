@@ -103,22 +103,24 @@ class ModelTrainer:
 
             # Plot Accuracy (or other primary metric like AUC if available and preferred)
             plt.subplot(1, 2, 2)
-            primary_metric_key = None
-            val_primary_metric_key = None
+            primary_metric_key, val_primary_metric_key = None, None
 
-            # Prefer 'auprc' or 'auc' if available, then 'accuracy'
-            if 'auprc' in self.history.history: # Assuming AUPRC might be tracked directly
+            # Prioritize auprc or auc for Keras plots if available
+            if 'auprc' in self.history.history: # Check for specific AUPRC metric from Keras
                 primary_metric_key = 'auprc'
-                val_primary_metric_key = 'val_auprc'
-            elif 'auc' in self.history.history: # For ROC AUC if tracked
-                 primary_metric_key = [k for k in self.history.history.keys() if 'auc' in k and 'val' not in k][0] if any('auc' in k and 'val' not in k for k in self.history.history.keys()) else None
-                 val_primary_metric_key = [k for k in self.history.history.keys() if 'auc' in k and 'val' in k][0] if any('auc'in k and 'val' in k for k in self.history.history.keys()) else None
+                val_primary_metric_key = 'val_auprc' if 'val_auprc' in self.history.history else None
+            elif any(k.startswith('auc') and 'val' not in k for k in self.history.history.keys()): # Generic AUC (could be ROC AUC)
+                 try:
+                     primary_metric_key = [k for k in self.history.history.keys() if k.startswith('auc') and 'val' not in k][0]
+                     val_primary_metric_key = [k for k in self.history.history.keys() if k.startswith('val_auc') and primary_metric_key in k][0] if any(k.startswith('val_auc') and primary_metric_key in k for k in self.history.history.keys()) else None
+                 except IndexError:
+                     primary_metric_key = None # Fallback if no non-val AUC found
             elif 'accuracy' in self.history.history:
                 primary_metric_key = 'accuracy'
-                val_primary_metric_key = 'val_accuracy'
+                val_primary_metric_key = 'val_accuracy' if 'val_accuracy' in self.history.history else None
             
             metric_name_display = "Metric" # Default display name
-            if primary_metric_key:
+            if primary_metric_key and primary_metric_key in self.history.history:
                 metric_name_display = primary_metric_key.replace("_", " ").title() # e.g. "Auc" or "Accuracy"
                 plt.plot(self.history.history[primary_metric_key], label=f'Train {metric_name_display}')
             if val_primary_metric_key and val_primary_metric_key in self.history.history:
@@ -127,7 +129,7 @@ class ModelTrainer:
             plt.title(f'Keras Model {metric_name_display}')
             plt.xlabel('Epochs')
             plt.ylabel(metric_name_display)
-            if primary_metric_key or val_primary_metric_key: # Only add legend if there's data
+            if primary_metric_key or (val_primary_metric_key and val_primary_metric_key in self.history.history): # Ensure legend only if data plotted
                 plt.legend()
             
             plot_file = os.path.join(output_path, f'{self.model_type}_keras_learning_curves.png')
@@ -353,27 +355,83 @@ class ModelTrainer:
             num_unique_classes = y_train.nunique() # This will be 2 for binary classification
 
             if y_pred_proba is not None:
-                # Simplified for binary classification
-                # Ensure y_pred_proba for binary is 1D array of positive class probabilities
-                if y_pred_proba.ndim == 2:
-                    if y_pred_proba.shape[1] == 2:
-                        y_pred_proba_binary = y_pred_proba[:, 1]
-                    elif y_pred_proba.shape[1] == 1:
-                        y_pred_proba_binary = y_pred_proba.ravel()
-                    else: # Should not happen for binary if model is correct
-                        print(f"Warning: y_pred_proba has unexpected shape {y_pred_proba.shape} for binary classification. Using as is.")
-                        y_pred_proba_binary = y_pred_proba # Or handle error
-                else: # Assumed to be already 1D
-                    y_pred_proba_binary = y_pred_proba
+                if num_unique_classes == 2: # Binary classification
+                    # Ensure y_pred_proba for binary is 1D array of positive class probabilities
+                    if y_pred_proba.ndim == 2:
+                        if y_pred_proba.shape[1] == 2:
+                            y_pred_proba_binary = y_pred_proba[:, 1]
+                        elif y_pred_proba.shape[1] == 1: # Should ideally not happen if positive class proba is extracted
+                            y_pred_proba_binary = y_pred_proba.ravel()
+                        else: # Should not happen for binary if model is correct
+                            print(f"Warning: y_pred_proba has unexpected shape {y_pred_proba.shape} for binary classification. Using as is for AUPRC/ROC AUC.")
+                            # This case might be problematic, but we let roc_auc_score try
+                            y_pred_proba_binary = y_pred_proba 
+                    else: # Assumed to be already 1D
+                        y_pred_proba_binary = y_pred_proba
 
-                try:
-                    metrics['roc_auc'] = roc_auc_score(y_test, y_pred_proba_binary)
-                    precision, recall, _ = precision_recall_curve(y_test, y_pred_proba_binary)
-                    metrics['auprc'] = auc(recall, precision)
-                except ValueError as e_metrics: # Handles cases like only one class present in y_test or other issues
-                    print(f"Could not compute ROC AUC or AUPRC for binary case: {e_metrics}")
-                    metrics['roc_auc'] = None
-                    metrics['auprc'] = None
+                    try:
+                        metrics['roc_auc'] = roc_auc_score(y_test, y_pred_proba_binary)
+                        precision, recall, _ = precision_recall_curve(y_test, y_pred_proba_binary)
+                        metrics['auprc'] = auc(recall, precision)
+                    except ValueError as e_metrics: # Handles cases like only one class present in y_test or other issues
+                        print(f"Could not compute ROC AUC or AUPRC for binary case: {e_metrics}")
+                        metrics['roc_auc'] = None
+                        metrics['auprc'] = None
+                
+                else: # Multi-class classification
+                    try:
+                        # For multi-class, y_pred_proba should have shape (n_samples, n_classes)
+                        metrics['roc_auc'] = roc_auc_score(y_test, y_pred_proba, multi_class='ovr', average='weighted')
+                        
+                        # For AUPRC (average precision) in multi-class:
+                        # Binarize y_test
+                        lb = LabelBinarizer()
+                        y_test_binarized = lb.fit_transform(y_test)
+                        
+                        # If y_test_binarized is a 1D array after binarization (e.g. only 2 classes that were not 0 and 1)
+                        # It means the original classes were not [0, 1, ..., n_classes-1]
+                        # We need to ensure y_test_binarized matches dimensions of y_pred_proba for average_precision_score
+                        if y_test_binarized.shape[1] == 1 and y_pred_proba.shape[1] > 1 and num_unique_classes > 2 :
+                             # This can happen if LabelBinarizer squeezes output for 2 classes that are not 0,1
+                             # but it's a multi-class problem by num_unique_classes.
+                             # Re-binarize with explicit classes if this becomes an issue.
+                             # For now, we trust num_unique_classes from y_train for the overall problem type.
+                             # A common case is if classes are e.g. [1, 2, 3], LB might make it 2 columns.
+                             # We need to ensure y_test_binarized has n_classes columns.
+                             # Re-creating with explicit classes to ensure correct shape if num_unique_classes > 2
+                             encoder = LabelEncoder()
+                             # Fit on y_train to get all possible classes
+                             all_classes = encoder.fit(y_train).classes_ 
+                             y_test_for_binarize = encoder.transform(y_test) # Ensure y_test labels are 0 to k-1
+
+                             lb_mc = LabelBinarizer()
+                             lb_mc.fit(y_test_for_binarize) # Fit on transformed labels
+                             y_test_binarized_mc = lb_mc.transform(y_test_for_binarize)
+
+                             # Handle case where LabelBinarizer creates only one column for two classes
+                             if num_unique_classes == 2 and y_test_binarized_mc.shape[1] == 1 and y_pred_proba.shape[1] == 2:
+                                 # This is essentially a binary case handled by the previous block,
+                                 # but if it falls here, we should use the positive class probabilities.
+                                 # This should ideally not be hit if the num_unique_classes == 2 path is taken.
+                                 metrics['auprc'] = average_precision_score(y_test, y_pred_proba[:, 1], average='weighted')
+                             elif y_test_binarized_mc.shape[1] != y_pred_proba.shape[1] and num_unique_classes > 1 :
+                                 # If after explicit binarization, shapes still mismatch (and not binary case)
+                                 # this implies an issue. Fallback or log error.
+                                 print(f"Warning: Shape mismatch for multi-class AUPRC. y_test_binarized shape: {y_test_binarized_mc.shape}, y_pred_proba shape: {y_pred_proba.shape}. AUPRC might be incorrect.")
+                                 metrics['auprc'] = None # Or some default error value
+                             else:
+                                 metrics['auprc'] = average_precision_score(y_test_binarized_mc, y_pred_proba, average='weighted')
+
+                        elif y_test_binarized.shape[1] != y_pred_proba.shape[1] and num_unique_classes > 1 : # General case mismatch
+                             print(f"Warning: Shape mismatch for multi-class AUPRC (initial binarization). y_test_binarized shape: {y_test_binarized.shape}, y_pred_proba shape: {y_pred_proba.shape}. AUPRC might be incorrect.")
+                             metrics['auprc'] = None
+                        else: # Shapes match or it's a single column binary case handled by LabelBinarizer
+                             metrics['auprc'] = average_precision_score(y_test_binarized, y_pred_proba, average="weighted")
+
+                    except ValueError as e_metrics:
+                        print(f"Could not compute ROC AUC or AUPRC for multi-class case: {e_metrics}")
+                        metrics['roc_auc'] = None
+                        metrics['auprc'] = None
             else:
                 metrics['roc_auc'] = None
                 metrics['auprc'] = None
@@ -479,19 +537,23 @@ class ModelTrainer:
             model.add(Dense(units, activation='relu', kernel_regularizer=l1_l2(l1=l1_reg, l2=l2_reg)))
             if dropout_rate > 0: model.add(Dropout(dropout_rate))
         
-        # Simplified for binary classification
-        model.add(Dense(1, activation='sigmoid'))
-        loss_function = 'binary_crossentropy'
+        metrics_to_compile = ['accuracy'] # Initialize here
+
+        if num_classes == 2: 
+            model.add(Dense(1, activation='sigmoid'))
+            loss_function = 'binary_crossentropy'
+            metrics_to_compile.extend([tf.keras.metrics.AUC(name='roc_auc', curve='ROC'), tf.keras.metrics.AUC(name='auprc', curve='PR')])
+        else: 
+            model.add(Dense(num_classes, activation='softmax'))
+            loss_function = 'categorical_crossentropy'
+            # For multi-class, Keras AUC with multi_label=True and num_labels implies an averaging (e.g., macro) over per-class AUCs.
+            metrics_to_compile.extend([
+                tf.keras.metrics.AUC(name='roc_auc', curve='ROC', multi_label=True, num_labels=num_classes),
+                tf.keras.metrics.AUC(name='auprc', curve='PR', multi_label=True, num_labels=num_classes)
+            ])
             
         optimizer = Adam(learning_rate=learning_rate)
         
-        # Compile model - Simplified for binary classification
-        metrics_to_compile = [
-            'accuracy',
-            tf.keras.metrics.AUC(name='roc_auc', curve='ROC'), 
-            tf.keras.metrics.AUC(name='auprc', curve='PR')
-        ]
-
         model.compile(optimizer=optimizer, loss=loss_function, metrics=metrics_to_compile)
         return model
 
