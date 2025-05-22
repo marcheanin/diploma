@@ -307,13 +307,13 @@ def run_genetic_algorithm():
     # test_path = "datasets/credit-score-classification/test.csv"
     # target_column = "Credit_Score"
 
-    # train_path = "datasets/credit-score-classification-manual-cleaned.csv"
-    # test_path = None
-    # target_column = "Credit_Score"
-
-    train_path = "datasets/diabetes.csv"
+    train_path = "datasets/credit-score-classification-manual-cleaned.csv"
     test_path = None
-    target_column = "Outcome"
+    target_column = "Credit_Score"
+
+    # train_path = "datasets/diabetes.csv"
+    # test_path = None
+    # target_column = "Outcome"
 
     # --- Check for dataset existence ---
     if not os.path.exists(train_path):
@@ -481,14 +481,43 @@ def run_genetic_algorithm():
             #              plt.scatter(gen_x_coord, fitness_score, color=color, alpha=0.25, s=25)
 
             # 2. Plot lines for best fitness per model type (markers on these lines are the points of interest)
-            for model_name, fitness_list in best_fitness_per_model_type_over_generations.items():
+            for model_name, original_fitness_list in best_fitness_per_model_type_over_generations.items():
                 if model_name in model_colors: # Ensure we have a color/marker for it
-                    # Only plot if there's actual data (not all NaNs)
-                    if not all(np.isnan(f) for f in fitness_list):
-                        line_plot, = plt.plot(generations_x_axis, fitness_list, marker=model_markers.get(model_name, '.'), 
-                                             linestyle='--', linewidth=1.5, color=model_colors[model_name],
-                                             label=model_names_display.get(model_name, model_name), markersize=7)
+                    
+                    # Create a plotting-specific list by carrying forward last known fitness for NaNs
+                    plot_fitness_list_for_line = []
+                    last_valid_fitness = np.nan 
+                    for f_val in original_fitness_list:
+                        if pd.isna(f_val): # Using pd.isna for robust NaN check
+                            plot_fitness_list_for_line.append(last_valid_fitness) # Carry forward
+                        else:
+                            plot_fitness_list_for_line.append(f_val)
+                            last_valid_fitness = f_val # Update last_valid_fitness
+
+                    # Only plot if there was at least one actual data point for this model
+                    if not all(pd.isna(f) for f in original_fitness_list):
+                        # Plot the continuous line (using potentially carried-forward values)
+                        line_plot, = plt.plot(generations_x_axis, plot_fitness_list_for_line, 
+                                             linestyle='--', 
+                                             linewidth=1.5, 
+                                             color=model_colors[model_name],
+                                             label=model_names_display.get(model_name, model_name)
+                                             # No marker on this line plot itself
+                                             )
                         legend_handles_map[model_names_display.get(model_name, model_name)] = line_plot
+
+                        # Now, plot markers only at actual data points from original_fitness_list
+                        actual_data_x_coords = [generations_x_axis[i] for i, y_val in enumerate(original_fitness_list) if not pd.isna(y_val)]
+                        actual_data_y_coords = [y_val for y_val in original_fitness_list if not pd.isna(y_val)]
+                        
+                        if actual_data_x_coords: # If there are any actual data points to mark
+                            plt.plot(actual_data_x_coords, actual_data_y_coords, 
+                                     marker=model_markers.get(model_name, '.'), 
+                                     linestyle='None', # Crucial: no line for this plot, just markers
+                                     color=model_colors[model_name],
+                                     markersize=7
+                                     # No label here, as the line plot already has it and is in legend_handles_map
+                                     )
             
             # 3. Plot the overall best fitness line (highlighted)
             best_overall_line, = plt.plot(generations_x_axis, best_fitness_over_generations, marker='o', linestyle='-', color='red', 

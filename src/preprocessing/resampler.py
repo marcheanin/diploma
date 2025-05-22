@@ -79,6 +79,19 @@ class Resampler:
         # Store original column names if X is a DataFrame
         original_columns = X.columns if isinstance(X, pd.DataFrame) else None
         original_index_name = X.index.name if isinstance(X, pd.DataFrame) else None
+
+        if self.method == 'smote' or self.method == 'adasyn':
+            # Ensure y is a pandas Series for nunique()
+            y_series = pd.Series(y) if not isinstance(y, pd.Series) else y
+            if y_series.nunique() > 2:  # Multi-class
+                # Check the sampling_strategy of the initialized SMOTE resampler
+                current_strategy = self.resampler.sampling_strategy
+                if isinstance(current_strategy, float):
+                    adapted_strategy = 'auto'
+                    print(f"Warning: SMOTE sampling_strategy '{current_strategy}' is a float but target is multi-class ({y_series.nunique()} classes).")
+                    print(f"Adapting SMOTE sampling_strategy to '{adapted_strategy}' for this run.")
+                    # Modify the strategy of the existing resampler instance
+                    self.resampler.sampling_strategy = adapted_strategy
         
         try:
             X_resampled, y_resampled = self.resampler.fit_resample(X, y)
