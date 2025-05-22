@@ -94,7 +94,7 @@ HP_MODEL_NN_LAYERS = { # For гп1_мод with neural_network
     3: (64, 32), 4: (128, 64)
 }
 HP_MODEL_NN_DROPOUT = {0: 0.0, 1: 0.2, 2: 0.4} # For гп2_мод with neural_network
-HP_MODEL_NN_LR = {0: 0.0005, 1: 0.001, 2: 0.005} # For гп3_мод with neural_network
+HP_MODEL_NN_LR = {0: 0.001, 1: 0.01, 2: 0.05, 3: 0.1} # For гп3_мод with neural_network
 
 # --- Gene Order and Structure ---
 # Each preprocessing step: [method_idx, hp1_idx, hp2_idx]
@@ -355,7 +355,9 @@ def train_model(train_data_input, test_data_input, target_column, research_path,
         # print(f"Model hyperparameters received: {model_hyperparameters}")
         pass
 
-    os.makedirs(research_path, exist_ok=True)
+    # Only create the research_path directory if we are actually saving results or plotting curves for this run.
+    if save_run_results or plot_learning_curves:
+        os.makedirs(research_path, exist_ok=True)
     
     # Load data if paths are provided
     current_train_data = train_data_input

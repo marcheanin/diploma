@@ -23,10 +23,11 @@ from main import (
 )
 
 # --- GA Parameters ---
-POPULATION_SIZE = 5
-NUM_GENERATIONS = 2 
-# CROSSOVER_RATE = 0.8 
-# MUTATION_RATE = 0.1 
+POPULATION_SIZE = 20  # Should be ideally larger for GA, e.g., 20-50
+NUM_GENERATIONS = 12 # Should be ideally larger for GA, e.g., 20-100
+ELITISM_PERCENT = 0.25  # Percentage of population to carry over as elite (25%)
+MUTATION_RATE = 0.1     # Probability of a gene mutating
+TOURNAMENT_SIZE = 3     # Size of the tournament for parent selection
 
 # --- Gene Information for Initialization (19 Genes Total) ---
 # [ImpMethod, ImpHP1, ImpHP2, OutMethod, OutHP1, OutHP2, ResMethod, ResHP1, ResHP2, 
@@ -64,12 +65,85 @@ if len(GENE_CHOICES_COUNT) != 19:
 
 def initialize_individual():
     """Initializes a single random 19-gene chromosome."""
-    individual = [np.random.randint(0, max_val) for max_val in GENE_CHOICES_COUNT]
+    individual = [np.random.randint(0, max_val) if max_val > 0 else 0 for max_val in GENE_CHOICES_COUNT]
     return individual
 
 def initialize_population(pop_size):
     """Initializes a population of random chromosomes."""
     return [initialize_individual() for _ in range(pop_size)]
+
+def select_parent_tournament(population_with_fitness, tournament_size):
+    """Selects a single parent using tournament selection.
+    Args:
+        population_with_fitness: List of tuples (chromosome, fitness_score).
+        tournament_size: Number of individuals to participate in the tournament.
+    Returns:
+        A single chromosome (the winner of the tournament).
+    """
+    if not population_with_fitness:
+        print("Warning: Attempted to select parent from empty or invalid population_with_fitness. Returning new random individual.")
+        return initialize_individual()
+
+    actual_tournament_size = min(tournament_size, len(population_with_fitness))
+    if actual_tournament_size == 0:
+         print("Warning: Tournament size became 0. Returning new random individual.")
+         return initialize_individual()
+
+    # Select indices for the tournament
+    tournament_indices = np.random.choice(len(population_with_fitness), size=actual_tournament_size, replace=False)
+    tournament_contestants = [population_with_fitness[i] for i in tournament_indices]
+    
+    # Sort by fitness (descending) and pick the best (highest fitness)
+    winner = max(tournament_contestants, key=lambda x: x[1])
+    return winner[0] # Return the chromosome of the winner
+
+def crossover(parent1, parent2):
+    """Performs single-point crossover between two parents.
+    Args:
+        parent1: The first parent chromosome (list of genes).
+        parent2: The second parent chromosome (list of genes).
+    Returns:
+        Two offspring chromosomes (tuple of two lists of genes).
+    """
+    if len(parent1) != len(parent2):
+        raise ValueError("Parents must have the same chromosome length for crossover.")
+    if len(parent1) < 2: # Crossover point needs at least 1 gene on each side
+        return list(parent1), list(parent2) # No crossover if too short
+
+    # Choose a random crossover point (ensuring it's not at the very ends)
+    c_point = np.random.randint(1, len(parent1)) 
+    
+    offspring1 = parent1[:c_point] + parent2[c_point:]
+    offspring2 = parent2[:c_point] + parent1[c_point:]
+    
+    return offspring1, offspring2
+
+def mutate(chromosome, mutation_rate, gene_choices_count):
+    """Performs mutation on a chromosome.
+    Args:
+        chromosome: The chromosome to mutate (list of genes).
+        mutation_rate: The probability of each gene mutating.
+        gene_choices_count: List of max values for each gene, to ensure valid mutations.
+    Returns:
+        The mutated chromosome (list of genes).
+    """
+    mutated_chromosome = list(chromosome) # Work on a copy
+    for i in range(len(mutated_chromosome)):
+        if np.random.rand() < mutation_rate:
+            if gene_choices_count[i] > 0: # Ensure there are choices for this gene
+                # Simple mutation: pick a new random valid integer for this gene
+                # To ensure it's different (optional, but can be good for exploration):
+                current_value = mutated_chromosome[i]
+                new_value = np.random.randint(0, gene_choices_count[i])
+                # If gene_choices_count[i] is 1 (only one option), it can't change.
+                # If it's > 1, try to ensure the new value is different.
+                if gene_choices_count[i] > 1:
+                    while new_value == current_value:
+                        new_value = np.random.randint(0, gene_choices_count[i])
+                mutated_chromosome[i] = new_value
+            # If gene_choices_count[i] is 0, it means no valid choice, so can't mutate.
+            # This shouldn't happen if GENE_CHOICES_COUNT is correctly defined based on HP maps.
+    return mutated_chromosome
 
 def evaluate_chromosome(chromosome_genes, train_path_ga, test_path_ga, target_column_ga, base_research_path_ga, gen_learning_curves_ga):
     """Evaluates a single chromosome and returns its fitness (PR AUC)."""
@@ -224,9 +298,22 @@ def run_genetic_algorithm():
     # test_path = "datasets/credit-score-classification/test.csv"
     # target_column = "Credit_Score"
 
-    train_path = "datasets/credit-score-classification-manual-cleaned.csv"
+    # train_path = "datasets/credit-score-classification-manual-cleaned.csv"
+    # test_path = None
+    # target_column = "Credit_Score"
+
+    train_path = "datasets/diabetes.csv"
     test_path = None
-    target_column = "Credit_Score"
+    target_column = "Outcome"
+
+    # --- Check for dataset existence ---
+    if not os.path.exists(train_path):
+        print(f"Error: Training data file not found at: {train_path}")
+        return
+    if test_path is not None and not os.path.exists(test_path):
+        print(f"Error: Test data file not found at: {test_path}")
+        return
+    # ---
     
     generate_learning_curves = False
 
@@ -238,16 +325,19 @@ def run_genetic_algorithm():
     best_overall_chromosome = None
     best_overall_fitness = -1.0 
     best_fitness_over_generations = [] 
+    all_individuals_fitness_over_generations = [] # New: To store all fitness scores per generation
 
     try: 
         for gen in range(NUM_GENERATIONS):
             print(f"\n--- Generation {gen + 1}/{NUM_GENERATIONS} ---")
             population_with_fitness = []
+            current_generation_fitness_scores = [] # New: To store fitness scores for the current generation
 
             for i, ind_chromosome in enumerate(population):
                 print(f"\nEvaluating Individual {i+1}/{POPULATION_SIZE} in Generation {gen+1}")
                 current_fitness = evaluate_chromosome(ind_chromosome, train_path, test_path, target_column, ga_base_research_path, generate_learning_curves)
                 population_with_fitness.append((ind_chromosome, current_fitness))
+                current_generation_fitness_scores.append(current_fitness) # New: Store current fitness
                 
                 if current_fitness > best_overall_fitness:
                     best_overall_fitness = current_fitness
@@ -262,34 +352,79 @@ def run_genetic_algorithm():
             
             current_gen_best_fitness = population_with_fitness[0][1]
             best_fitness_over_generations.append(current_gen_best_fitness)
+            all_individuals_fitness_over_generations.append(current_generation_fitness_scores) # New: Add all scores for this gen
 
             print(f"\nEnd of Generation {gen + 1}. Best fitness in this generation: {current_gen_best_fitness:.4f}")
             print(f"Best chromosome this generation: {population_with_fitness[0][0]}")
             
             if gen < NUM_GENERATIONS - 1:
-                print("GA operators (selection, crossover, mutation) not yet implemented. Creating next generation based on top half and random individuals.")
-                top_half_count = POPULATION_SIZE // 2
-                if top_half_count == 0 and POPULATION_SIZE > 0: top_half_count = 1
+                next_population = []
+                num_elite = int(POPULATION_SIZE * ELITISM_PERCENT)
                 
-                next_population = [item[0] for item in population_with_fitness[:top_half_count]]
-                needed_random = POPULATION_SIZE - len(next_population)
-                if needed_random > 0:
-                    next_population.extend([initialize_individual() for _ in range(needed_random)])
-                population = next_population[:POPULATION_SIZE] 
+                # Elitism: Carry over the best individuals
+                if num_elite > 0 and population_with_fitness:
+                    elite_individuals = [item[0] for item in population_with_fitness[:num_elite]]
+                    next_population.extend(elite_individuals)
+                    # print(f"Carried over {len(elite_individuals)} elite individuals.")
+
+                # Fill the rest of the population with offspring
+                num_offspring_needed = POPULATION_SIZE - len(next_population)
+                offspring_generated = 0
+
+                # Ensure population_with_fitness is not empty for parent selection
+                if not population_with_fitness:
+                    print("Warning: Current population is empty. Cannot select parents. Filling with random individuals.")
+                    next_population.extend([initialize_individual() for _ in range(num_offspring_needed)])
+                else:
+                    # Generate offspring through crossover and mutation
+                    while offspring_generated < num_offspring_needed:
+                        # Select parents
+                        parent1 = select_parent_tournament(population_with_fitness, TOURNAMENT_SIZE)
+                        parent2 = select_parent_tournament(population_with_fitness, TOURNAMENT_SIZE)
+                        
+                        # Perform crossover to get two offspring
+                        offspring1, offspring2 = crossover(parent1, parent2)
+                        
+                        # Mutate offspring1
+                        mutated_offspring1 = mutate(offspring1, MUTATION_RATE, GENE_CHOICES_COUNT)
+                        if offspring_generated < num_offspring_needed:
+                            next_population.append(mutated_offspring1)
+                            offspring_generated += 1
+                        
+                        # Mutate offspring2 (if still needed)
+                        if offspring_generated < num_offspring_needed:
+                            mutated_offspring2 = mutate(offspring2, MUTATION_RATE, GENE_CHOICES_COUNT)
+                            next_population.append(mutated_offspring2)
+                            offspring_generated += 1
                 
+                population = next_population[:POPULATION_SIZE] # Ensure population size is correct
                 if not population and POPULATION_SIZE > 0:
-                    print("Warning: Next population became empty. Re-initializing.")
+                    print("Warning: Next population became empty after operators. Re-initializing with random individuals.")
                     population = initialize_population(POPULATION_SIZE)
+                # print(f"Next generation created with {len(population)} individuals.")
+
     finally: 
         if best_fitness_over_generations:
-            plt.figure(figsize=(10, 6))
-            plt.plot(range(1, len(best_fitness_over_generations) + 1), best_fitness_over_generations, marker='o', linestyle='-')
-            plt.title('Best Fitness (AUPRC) vs. Generation')
+            plt.figure(figsize=(12, 7)) # Slightly larger figure
+            generations_x_axis = range(1, len(best_fitness_over_generations) + 1)
+
+            # Plot all individual fitness scores for each generation as background
+            for gen_idx, fitness_scores_in_gen in enumerate(all_individuals_fitness_over_generations):
+                # Create an x-axis array for this generation, can add slight jitter for visibility if needed
+                # For simplicity, plotting all at the same x-coordinate for the generation
+                x_values_for_gen = [generations_x_axis[gen_idx]] * len(fitness_scores_in_gen)
+                plt.scatter(x_values_for_gen, fitness_scores_in_gen, color='lightblue', alpha=0.5, s=10, label='_nolegend_') # s is size
+
+            # Plot the best fitness line (highlighted)
+            plt.plot(generations_x_axis, best_fitness_over_generations, marker='o', linestyle='-', color='blue', linewidth=2, label='Best Fitness per Generation')
+            
+            plt.title('GA Fitness Progression: All Individuals and Best per Generation')
             plt.xlabel('Generation')
-            plt.ylabel('Best AUPRC')
-            plt.xticks(range(1, len(best_fitness_over_generations) + 1))
+            plt.ylabel('Fitness (AUPRC)')
+            plt.xticks(generations_x_axis)
+            plt.legend()
             plt.grid(True)
-            plot_save_path = os.path.join(ga_base_research_path, "ga_fitness_progression.png")
+            plot_save_path = os.path.join(ga_base_research_path, "ga_fitness_progression_detailed.png")
             try:
                 plt.savefig(plot_save_path)
                 print(f"\nFitness progression plot saved to {plot_save_path}")
