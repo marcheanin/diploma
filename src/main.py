@@ -44,69 +44,74 @@ MODEL_MAP = {0: 'logistic_regression', 1: 'random_forest', 2: 'gradient_boosting
 
 # --- Hyperparameter Maps ---
 # Imputation HP Maps
-HP_IMPUTATION_KNN_N_NEIGHBORS = {0: 3, 1: 5, 2: 7, 3: 10} # For гп1_имп with knn
-HP_IMPUTATION_MISSFOREST_N_ESTIMATORS = {0: 50, 1: 100, 2: 150} # For гп1_имп with missforest
-HP_IMPUTATION_MISSFOREST_MAX_ITER = {0: 5, 1: 10, 2: 15} # For гп2_имп with missforest
+HP_IMPUTATION_KNN_N_NEIGHBORS = {0: 3, 1: 5, 2: 7, 3: 10, 4: 15} # For гп1_имп with knn
+HP_IMPUTATION_MISSFOREST_N_ESTIMATORS = {0: 30, 1: 50, 2: 100, 3: 150, 4: 200} # For гп1_имп with missforest
+HP_IMPUTATION_MISSFOREST_MAX_ITER = {0: 5, 1: 10, 2: 15, 3: 20} # For гп2_имп with missforest
 
 # Outlier HP Maps
-HP_OUTLIER_IF_N_ESTIMATORS = {0: 50, 1: 100, 2: 150} # For гп1_выбр with isolation_forest
-HP_OUTLIER_IF_CONTAMINATION = {0: 'auto', 1: 0.01, 2: 0.05, 3: 0.1} # For гп2_выбр with isolation_forest
+HP_OUTLIER_IF_N_ESTIMATORS = {0: 30, 1: 50, 2: 100, 3: 150, 4: 200} # For гп1_выбр with isolation_forest
+HP_OUTLIER_IF_CONTAMINATION = {0: 'auto', 1: 0.01, 2: 0.025, 3: 0.05, 4: 0.1, 5: 0.15} # For гп2_выбр with isolation_forest
 HP_OUTLIER_IQR_MULTIPLIER = {0: 1.5, 1: 2.0, 2: 2.5, 3: 3.0} # For гп1_выбр with iqr
 
 # Resampling HP Maps
-HP_RESAMPLING_ROS_STRATEGY = {0: 'auto', 1: 'minority', 2: 0.5, 3: 0.75} # For гп1_рес with oversample
-HP_RESAMPLING_SMOTE_K_NEIGHBORS = {0: 3, 1: 5, 2: 7} # For гп1_рес with smote
-HP_RESAMPLING_SMOTE_STRATEGY = {0: 'auto', 1: 'minority', 2: 0.5, 3: 0.75} # For гп2_рес with smote
-HP_RESAMPLING_ADASYN_N_NEIGHBORS = {0: 3, 1: 5, 2: 7} # For гп1_рес with adasyn
-HP_RESAMPLING_ADASYN_STRATEGY = {0: 'auto', 1: 'minority', 2: 0.5, 3: 0.75} # For гп2_рес with adasyn
+HP_RESAMPLING_ROS_STRATEGY = {0: 'auto', 1: 'minority', 2: 0.5, 3: 0.6, 4: 0.75} # For гп1_рес with oversample
+HP_RESAMPLING_SMOTE_K_NEIGHBORS = {0: 3, 1: 5, 2: 7, 3: 9} # For гп1_рес with smote
+HP_RESAMPLING_SMOTE_STRATEGY = {0: 'auto', 1: 'minority', 2: 0.5, 3: 0.6, 4: 0.75} # For гп2_рес with smote
+HP_RESAMPLING_ADASYN_N_NEIGHBORS = {0: 3, 1: 5, 2: 7, 3: 9} # For гп1_рес with adasyn
+HP_RESAMPLING_ADASYN_STRATEGY = {0: 'auto', 1: 'minority', 2: 0.5, 3: 0.6, 4: 0.75} # For гп2_рес with adasyn
 
 # Encoding HP Maps
-HP_ENCODING_ONEHOT_MAX_CARDINALITY = {0: 20, 1: 50, 2: 100} # For гп1_код with onehot
+HP_ENCODING_ONEHOT_MAX_CARDINALITY = {0: 10, 1: 20, 2: 50, 3: 100} # For гп1_код with onehot
 HP_ENCODING_ONEHOT_DROP = {0: None, 1: 'first'} # For гп2_код with onehot
-HP_ENCODING_LSA_N_COMPONENTS = {0: 10, 1: 25, 2: 50} # For гп1_код with lsa
-HP_ENCODING_LSA_NGRAM_MAX = {0: 1, 1: 2} # For гп2_код with lsa (ngram_range=(1, val))
-HP_ENCODING_W2V_DIM = {0: 25, 1: 50, 2: 100} # For гп1_код with word2vec
-HP_ENCODING_W2V_WINDOW = {0: 1, 1: 3, 2: 5} # For гп2_код with word2vec
+HP_ENCODING_LSA_N_COMPONENTS = {0: 5, 1: 10, 2: 25, 3: 50, 4: 75} # For гп1_код with lsa
+HP_ENCODING_LSA_NGRAM_MAX = {0: 1, 1: 2, 2: 3} # For гп2_код with lsa (ngram_range=(1, val))
+HP_ENCODING_W2V_DIM = {0: 25, 1: 50, 2: 75, 3: 100, 4: 150} # For гп1_код with word2vec
+HP_ENCODING_W2V_WINDOW = {0: 1, 1: 2, 2: 3, 3: 5, 4: 7} # For гп2_код with word2vec
 
 # Scaling HP Maps
 HP_SCALING_STANDARD_WITH_MEAN = {0: True, 1: False} # For гп1_масшт with standard
 HP_SCALING_STANDARD_WITH_STD = {0: True, 1: False} # For гп2_масшт with standard
 
 # Model HP Maps
-HP_MODEL_LOGREG_C = {0: 0.01, 1: 0.1, 2: 1.0, 3: 10.0} # For гп1_мод with logistic_regression
-HP_MODEL_LOGREG_PENALTY_SOLVER = { # For гп2_мод with logistic_regression
+HP_MODEL_LOGREG_C = {0: 0.001, 1: 0.01, 2: 0.1, 3: 1.0, 4: 10.0, 5: 100.0} # HP1
+HP_MODEL_LOGREG_PENALTY_SOLVER = { # HP2
     0: {'penalty': 'l2', 'solver': 'lbfgs', 'l1_ratio': None}, 1: {'penalty': 'l1', 'solver': 'liblinear', 'l1_ratio': None},
     2: {'penalty': 'l2', 'solver': 'liblinear', 'l1_ratio': None}, 3: {'penalty': 'l1', 'solver': 'saga', 'l1_ratio': None},
     4: {'penalty': 'l2', 'solver': 'saga', 'l1_ratio': None}, 5: {'penalty': 'elasticnet', 'solver': 'saga', 'l1_ratio': 0.5}
 }
-HP_MODEL_LOGREG_CLASS_WEIGHT = {0: None, 1: 'balanced'} # For гп3_мод with logistic_regression
+HP_MODEL_LOGREG_CLASS_WEIGHT = {0: None, 1: 'balanced'} # HP3
+HP_MODEL_LOGREG_MAX_ITER = {0: 100, 1: 200, 2: 300, 3: 500} # HP4 (New)
 
-HP_MODEL_RF_N_ESTIMATORS = {0: 50, 1: 100, 2: 200} # For гп1_мод with random_forest
-HP_MODEL_RF_MAX_DEPTH = {0: 5, 1: 10, 2: 20, 3: None} # For гп2_мод with random_forest
-HP_MODEL_RF_MIN_SAMPLES_SPLIT = {0: 2, 1: 5, 2: 10} # For гп3_мод with random_forest
+HP_MODEL_RF_N_ESTIMATORS = {0: 25, 1: 50, 2: 100, 3: 200, 4: 300} # HP1
+HP_MODEL_RF_MAX_DEPTH = {0: 5, 1: 7, 2: 10, 3: 15, 4: 20, 5: None} # HP2
+HP_MODEL_RF_MIN_SAMPLES_SPLIT = {0: 2, 1: 5, 2: 10, 3: 15} # HP3
+HP_MODEL_RF_MIN_SAMPLES_LEAF = {0: 1, 1: 2, 2: 5, 3: 10} # HP4 (New)
 
-HP_MODEL_GB_N_ESTIMATORS = {0: 50, 1: 100, 2: 200} # For гп1_мод with gradient_boosting
-HP_MODEL_GB_LEARNING_RATE = {0: 0.01, 1: 0.05, 2: 0.1} # For гп2_мод with gradient_boosting
-HP_MODEL_GB_MAX_DEPTH = {0: 3, 1: 5, 2: 7} # For гп3_мод with gradient_boosting
+HP_MODEL_GB_N_ESTIMATORS = {0: 25, 1: 50, 2: 100, 3: 200, 4: 300} # HP1
+HP_MODEL_GB_LEARNING_RATE = {0: 0.005, 1: 0.01, 2: 0.05, 3: 0.1, 4: 0.2} # HP2
+HP_MODEL_GB_MAX_DEPTH = {0: 2, 1: 3, 2: 4, 3: 5, 4: 7} # HP3
+HP_MODEL_GB_SUBSAMPLE = {0: 0.7, 1: 0.8, 2: 0.9, 3: 1.0} # HP4 (New)
 
-HP_MODEL_NN_LAYERS = { # For гп1_мод with neural_network
+HP_MODEL_NN_LAYERS = { # HP1
     0: (32,), 1: (64,), 2: (128,),
-    3: (64, 32), 4: (128, 64)
+    3: (32, 32), 4: (64, 32), 5: (128, 64), 
+    6: (64, 64), 7: (128, 64, 32)
 }
-HP_MODEL_NN_DROPOUT = {0: 0.0, 1: 0.2, 2: 0.4} # For гп2_мод with neural_network
-HP_MODEL_NN_LR = {0: 0.001, 1: 0.01, 2: 0.05, 3: 0.1} # For гп3_мод with neural_network
+HP_MODEL_NN_DROPOUT = {0: 0.0, 1: 0.1, 2: 0.2, 3: 0.3, 4: 0.4, 5: 0.5} # HP2
+HP_MODEL_NN_LR = {0: 0.0001, 1: 0.0005, 2: 0.001, 3: 0.005, 4: 0.01, 5: 0.05} # HP3
+HP_MODEL_NN_BATCH_SIZE = {0: 16, 1: 32, 2: 64, 3: 128} # HP4 (New)
 
 # --- Gene Order and Structure ---
 # Each preprocessing step: [method_idx, hp1_idx, hp2_idx]
-# Model step: [method_idx, hp1_idx, hp2_idx, hp3_idx]
-# Total genes = 5 * 3 + 4 = 19
+# Model step: [method_idx, hp1_idx, hp2_idx, hp3_idx, hp4_idx] # Updated for model
+# Total genes = 5 * 3 + 1 (model method) + 4 (model HPs) = 15 + 1 + 4 = 20
 GENE_DESCRIPTIONS = [
     "Imputation Method", "Imputation HP1", "Imputation HP2",
     "Outlier Method", "Outlier HP1", "Outlier HP2",
     "Resampling Method", "Resampling HP1", "Resampling HP2",
     "Encoding Method", "Encoding HP1", "Encoding HP2",
     "Scaling Method", "Scaling HP1", "Scaling HP2",
-    "Model Method", "Model HP1", "Model HP2", "Model HP3"
+    "Model Method", "Model HP1", "Model HP2", "Model HP3", "Model HP4" # Added Model HP4
 ]
 
 # --- GA Parameters (placeholders, primary definition in ga_optimizer.py) ---
@@ -125,10 +130,10 @@ GENE_MAPS_LENGTHS = {
 GENE_ORDER = ['imputation', 'outlier_removal', 'resampling', 'encoding', 'scaling', 'model']
 
 def decode_and_log_chromosome(chromosome):
-    """Decodes a 19-gene chromosome and prints its meaning, returning a structured dict."""
+    """Decodes a 20-gene chromosome and prints its meaning, returning a structured dict."""
     print("\n--- Chromosome Definition ---")
-    if len(chromosome) != 19:
-        print(f"Error: Chromosome must have 19 genes, got {len(chromosome)}.")
+    if len(chromosome) != 20:
+        print(f"Error: Chromosome must have 20 genes, got {len(chromosome)}.")
         return None
 
     decoded_chromosome = {
@@ -239,7 +244,6 @@ def decode_and_log_chromosome(chromosome):
     else: # label or unknown
         decoded_chromosome['description']['encoding_hp1'] = f"Unused (HP1 Idx: {enc_hp1_idx})"
         decoded_chromosome['description']['encoding_hp2'] = f"Unused (HP2 Idx: {enc_hp2_idx})"
-    # Keep drop=None for onehot, filter others if None
     filtered_enc_params = {}
     for k,v in enc_params.items():
         if v is not None or (enc_method == 'onehot' and k == 'drop'):
@@ -262,56 +266,57 @@ def decode_and_log_chromosome(chromosome):
         decoded_chromosome['description']['scaling_hp2'] = f"Unused (HP2 Idx: {sca_hp2_idx})"
     decoded_chromosome['pipeline_params']['scaling_params'] = {k:v for k,v in sca_params.items() if v is not None}
 
-    # 6. Model (Genes 15, 16, 17, 18)
-    model_method_idx, model_hp1_idx, model_hp2_idx, model_hp3_idx = chromosome[15], chromosome[16], chromosome[17], chromosome[18]
+    # 6. Model (Genes 15, 16, 17, 18, 19)
+    model_method_idx, model_hp1_idx, model_hp2_idx, model_hp3_idx, model_hp4_idx = chromosome[15], chromosome[16], chromosome[17], chromosome[18], chromosome[19]
     model_type = MODEL_MAP.get(model_method_idx, "Unknown Model")
     decoded_chromosome['description']['model'] = f"{model_type} (Method Idx: {model_method_idx})"
     decoded_chromosome['pipeline_params']['model_type'] = model_type
     model_params = {}
     if model_type == 'logistic_regression':
         model_params['C'] = get_hp_value(model_hp1_idx, HP_MODEL_LOGREG_C, "C", model_type)
-        # The solver_penalty_config is directly the dictionary from HP_MODEL_LOGREG_PENALTY_SOLVER
         model_params['solver_penalty_config'] = get_hp_value(model_hp2_idx, HP_MODEL_LOGREG_PENALTY_SOLVER, "solver/penalty", model_type)
         model_params['class_weight'] = get_hp_value(model_hp3_idx, HP_MODEL_LOGREG_CLASS_WEIGHT, "class_weight", model_type)
+        model_params['max_iter'] = get_hp_value(model_hp4_idx, HP_MODEL_LOGREG_MAX_ITER, "max_iter", model_type)
         decoded_chromosome['description']['model_hp1'] = f"C: {model_params.get('C')} (HP1 Idx: {model_hp1_idx})"
         decoded_chromosome['description']['model_hp2'] = f"Solver/Penalty Config: {model_params.get('solver_penalty_config')} (HP2 Idx: {model_hp2_idx})"
         decoded_chromosome['description']['model_hp3'] = f"Class Weight: {model_params.get('class_weight')} (HP3 Idx: {model_hp3_idx})"
+        decoded_chromosome['description']['model_hp4'] = f"Max Iter: {model_params.get('max_iter')} (HP4 Idx: {model_hp4_idx})"
     elif model_type == 'random_forest':
         model_params['n_estimators'] = get_hp_value(model_hp1_idx, HP_MODEL_RF_N_ESTIMATORS, "n_estimators_rf", model_type)
         model_params['max_depth'] = get_hp_value(model_hp2_idx, HP_MODEL_RF_MAX_DEPTH, "max_depth_rf", model_type)
         model_params['min_samples_split'] = get_hp_value(model_hp3_idx, HP_MODEL_RF_MIN_SAMPLES_SPLIT, "min_samples_split_rf", model_type)
+        model_params['min_samples_leaf'] = get_hp_value(model_hp4_idx, HP_MODEL_RF_MIN_SAMPLES_LEAF, "min_samples_leaf_rf", model_type)
         decoded_chromosome['description']['model_hp1'] = f"n_estimators: {model_params.get('n_estimators')} (HP1 Idx: {model_hp1_idx})"
         decoded_chromosome['description']['model_hp2'] = f"max_depth: {model_params.get('max_depth')} (HP2 Idx: {model_hp2_idx})"
         decoded_chromosome['description']['model_hp3'] = f"min_samples_split: {model_params.get('min_samples_split')} (HP3 Idx: {model_hp3_idx})"
+        decoded_chromosome['description']['model_hp4'] = f"min_samples_leaf: {model_params.get('min_samples_leaf')} (HP4 Idx: {model_hp4_idx})"
     elif model_type == 'gradient_boosting':
         model_params['n_estimators'] = get_hp_value(model_hp1_idx, HP_MODEL_GB_N_ESTIMATORS, "n_estimators_gb", model_type)
         model_params['learning_rate'] = get_hp_value(model_hp2_idx, HP_MODEL_GB_LEARNING_RATE, "learning_rate_gb", model_type)
         model_params['max_depth'] = get_hp_value(model_hp3_idx, HP_MODEL_GB_MAX_DEPTH, "max_depth_gb", model_type)
+        model_params['subsample'] = get_hp_value(model_hp4_idx, HP_MODEL_GB_SUBSAMPLE, "subsample_gb", model_type)
         decoded_chromosome['description']['model_hp1'] = f"n_estimators: {model_params.get('n_estimators')} (HP1 Idx: {model_hp1_idx})"
         decoded_chromosome['description']['model_hp2'] = f"learning_rate: {model_params.get('learning_rate')} (HP2 Idx: {model_hp2_idx})"
         decoded_chromosome['description']['model_hp3'] = f"max_depth: {model_params.get('max_depth')} (HP3 Idx: {model_hp3_idx})"
+        decoded_chromosome['description']['model_hp4'] = f"subsample: {model_params.get('subsample')} (HP4 Idx: {model_hp4_idx})"
     elif model_type == 'neural_network':
         model_params['hidden_layer_sizes'] = get_hp_value(model_hp1_idx, HP_MODEL_NN_LAYERS, "hidden_layer_sizes_nn", model_type)
         model_params['dropout_rate'] = get_hp_value(model_hp2_idx, HP_MODEL_NN_DROPOUT, "dropout_rate_nn", model_type)
         model_params['learning_rate'] = get_hp_value(model_hp3_idx, HP_MODEL_NN_LR, "learning_rate_nn", model_type)
-        # Keras specific HPs from problem description (epochs, batch_size, early_stopping_patience, l1_reg, l2_reg)
-        # These are not in the current HP_MODEL_NN maps directly from chromosome genes 16,17,18.
-        # For now, they will take defaults in ModelTrainer or need to be added to chromosome if GA is to optimize them.
-        # For simplicity, we will let ModelTrainer use its defaults for these if not found in model_params.
+        model_params['batch_size'] = get_hp_value(model_hp4_idx, HP_MODEL_NN_BATCH_SIZE, "batch_size_nn", model_type)
         decoded_chromosome['description']['model_hp1'] = f"Hidden Layers: {model_params.get('hidden_layer_sizes')} (HP1 Idx: {model_hp1_idx})"
         decoded_chromosome['description']['model_hp2'] = f"Dropout Rate: {model_params.get('dropout_rate')} (HP2 Idx: {model_hp2_idx})"
         decoded_chromosome['description']['model_hp3'] = f"Learning Rate: {model_params.get('learning_rate')} (HP3 Idx: {model_hp3_idx})"
+        decoded_chromosome['description']['model_hp4'] = f"Batch Size: {model_params.get('batch_size')} (HP4 Idx: {model_hp4_idx})"
     
-    # Filter out None values from model_params, except for specific cases like class_weight or solver_penalty_config if it's a dict
     final_model_params = {}
     for k, v in model_params.items():
         if v is not None:
             final_model_params[k] = v
-        elif k == 'class_weight' and v is None: # Allow None for class_weight
+        elif k == 'class_weight' and v is None: 
              final_model_params[k] = None
-        elif k == 'solver_penalty_config' and isinstance(v, dict): # Allow dict even if parts are None (though current map doesn't have None values in the dict)
+        elif k == 'solver_penalty_config' and isinstance(v, dict): 
             final_model_params[k] = v
-        # For RF max_depth=None is valid
         elif model_type == 'random_forest' and k == 'max_depth' and v is None:
             final_model_params[k] = None
             
@@ -319,18 +324,6 @@ def decode_and_log_chromosome(chromosome):
 
     print(f"Chromosome (raw): {list(chromosome)}")
     print("Decoded Chromosome Details:")
-    # Optionally print the detailed description if needed for debugging
-    # for i, desc_key_value_pair in enumerate(GENE_DESCRIPTIONS):
-    #     gene_cat = desc_key_value_pair.split(" ")[0].lower()
-    #     hp_suffix = ""
-    #     if "HP1" in desc_key_value_pair: hp_suffix = "_hp1"
-    #     elif "HP2" in desc_key_value_pair: hp_suffix = "_hp2"
-    #     elif "HP3" in desc_key_value_pair: hp_suffix = "_hp3"
-    #     dict_key = gene_cat + hp_suffix if hp_suffix else gene_cat
-    #     if dict_key == "modelhp3": dict_key = "model_hp3" # consistency for last model hp
-
-    #     print(f"  Gene {i}: {GENE_DESCRIPTIONS[i]} = {chromosome[i]} -> {decoded_chromosome['description'].get(dict_key, 'N/A')}")
-
     print(f"  Imputation: {decoded_chromosome['pipeline_params']['imputation_method']}, Params: {decoded_chromosome['pipeline_params']['imputation_params']}")
     print(f"  Outlier Removal: {decoded_chromosome['pipeline_params']['outlier_method']}, Params: {decoded_chromosome['pipeline_params']['outlier_params']}")
     print(f"  Resampling: {decoded_chromosome['pipeline_params']['resampling_method']}, Params: {decoded_chromosome['pipeline_params']['resampling_params']}")
@@ -442,7 +435,7 @@ def main():
         2, 1, 0,  # Resampling: smote, k_neighbors=5, strategy=auto
         1, 0, 0,  # Encoding: label
         1, 0, 0,  # Scaling: standard, mean=True, std=True
-        1, 1, 1, 1 # Model: random_forest, n_est=100, depth=10, split=5
+        1, 2, 2, 1, 0 # Model: random_forest, n_est=100 (idx 2), depth=10 (idx 2), split=5 (idx 1), leaf=1 (idx 0)
     ]
     
     decoded_params = decode_and_log_chromosome(example_chromosome)
