@@ -23,8 +23,8 @@ from main import (
 )
 
 # --- GA Parameters ---
-POPULATION_SIZE = 10  # Should be ideally larger for GA, e.g., 20-50
-NUM_GENERATIONS = 6 # Should be ideally larger for GA, e.g., 20-100
+POPULATION_SIZE = 20  # Should be ideally larger for GA, e.g., 20-50
+NUM_GENERATIONS = 20 # Should be ideally larger for GA, e.g., 20-100
 ELITISM_PERCENT = 0.25  # Percentage of population to carry over as elite (25%)
 MUTATION_RATE = 0.1     # Probability of a gene mutating
 TOURNAMENT_SIZE = 3     # Size of the tournament for parent selection
@@ -307,13 +307,13 @@ def run_genetic_algorithm():
     # test_path = "datasets/credit-score-classification/test.csv"
     # target_column = "Credit_Score"
 
-    train_path = "datasets/credit-score-classification-manual-cleaned.csv"
-    test_path = None
-    target_column = "Credit_Score"
-
-    # train_path = "datasets/diabetes.csv"
+    # train_path = "datasets/credit-score-classification-manual-cleaned.csv"
     # test_path = None
-    # target_column = "Outcome"
+    # target_column = "Credit_Score"
+
+    train_path = "datasets/diabetes.csv"
+    test_path = None
+    target_column = "Outcome"
 
     # --- Check for dataset existence ---
     if not os.path.exists(train_path):
@@ -448,10 +448,10 @@ def run_genetic_algorithm():
                 None: 'lightgrey' 
             }
             model_names_display = {
-                'logistic_regression': 'LogReg Best',
-                'random_forest': 'RF Best',
-                'gradient_boosting': 'GB Best',
-                'neural_network': 'NN Best',
+                'logistic_regression': 'Logistic Regression Best',
+                'random_forest': 'Random Forest Best',
+                'gradient_boosting': 'Gradient Boosting Best',
+                'neural_network': 'Neural Network Best',
                 None: 'Undefined/Error'
             }
             model_markers = { # Different markers for lines
