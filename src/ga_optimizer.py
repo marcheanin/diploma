@@ -23,8 +23,8 @@ from main import (
 )
 
 # --- GA Parameters ---
-POPULATION_SIZE = 20  # Should be ideally larger for GA, e.g., 20-50
-NUM_GENERATIONS = 20 # Should be ideally larger for GA, e.g., 20-100
+POPULATION_SIZE = 15  # Should be ideally larger for GA, e.g., 20-50
+NUM_GENERATIONS = 10 # Should be ideally larger for GA, e.g., 20-100
 ELITISM_PERCENT = 0.25  # Percentage of population to carry over as elite (25%)
 MUTATION_RATE = 0.1     # Probability of a gene mutating
 TOURNAMENT_SIZE = 3     # Size of the tournament for parent selection
@@ -303,17 +303,27 @@ def evaluate_chromosome(chromosome_genes, train_path_ga, test_path_ga, target_co
 def run_genetic_algorithm():
     """Main function to set up and run the genetic algorithm."""
     print("\n=== Setting up GA for Credit Score Dataset ===")
-    # train_path = "datasets/credit-score-classification/train.csv"
-    # test_path = "datasets/credit-score-classification/test.csv"
-    # target_column = "Credit_Score"
+
+
+    train_path = "datasets/credit-score-classification/train.csv"
+    test_path = "datasets/credit-score-classification/test.csv"
+    target_column = "Credit_Score"
 
     # train_path = "datasets/credit-score-classification-manual-cleaned.csv"
     # test_path = None
     # target_column = "Credit_Score"
 
-    train_path = "datasets/diabetes.csv"
-    test_path = None
-    target_column = "Outcome"
+    # train_path = "datasets/diabetes.csv"
+    # test_path = None
+    # target_column = "Outcome"
+
+    # train_path = "datasets/UCI_Credit_Card.csv"
+    # test_path = None
+    # target_column = "default.payment.next.month"
+
+    # train_path = "datasets/Loan_Default.csv"
+    # test_path = None
+    # target_column = "Status"
 
     # --- Check for dataset existence ---
     if not os.path.exists(train_path):

@@ -119,9 +119,9 @@ def process_data(train_path, test_path, target_column,
     if outlier_method != 'none':
         train_data_before_outliers = train_data.copy()
         try:
-            # Pass HPs to OutlierRemover constructor or method if it supports them
             remover = OutlierRemover(method=outlier_method, **outlier_params) 
             features_for_removal = train_data.drop(columns=[target_column], errors='ignore')
+            
             target_series_for_reconstruction = None
             if target_column in train_data.columns:
                 target_series_for_reconstruction = train_data[target_column]
@@ -135,7 +135,9 @@ def process_data(train_path, test_path, target_column,
                 cleaned_features_idx = cleaned_features.index
                 target_series_aligned = target_series_for_reconstruction.loc[target_series_for_reconstruction.index.intersection(cleaned_features_idx)]
                 cleaned_features_aligned = cleaned_features.loc[cleaned_features.index.intersection(target_series_aligned.index)]
+                
                 train_data = pd.concat([cleaned_features_aligned, target_series_aligned.rename(target_column)], axis=1)
+
             else:
                 train_data = cleaned_features
         except Exception as e:
@@ -145,7 +147,27 @@ def process_data(train_path, test_path, target_column,
         print("Outlier removal skipped as method is 'none'.")
     print(f"[Pipeline Stage - Config: {experiment_name}] Outlier removal completed.")
 
+    # --- Diagnostic: Check for duplicate columns before encoding ---
+    duplicated_cols_before_encoding = train_data.columns[train_data.columns.duplicated()].tolist()
+    if duplicated_cols_before_encoding:
+        print(f"WARNING: Duplicate columns found in train_data BEFORE encoding: {duplicated_cols_before_encoding}")
+        # Aggressively remove duplicates, keeping the first occurrence
+        train_data = train_data.loc[:, ~train_data.columns.duplicated(keep='first')]
+        print(f"         Duplicates removed. Columns now: {train_data.columns.tolist()}")
+    if test_data is not None and not test_data.empty:
+        duplicated_cols_test_before_encoding = test_data.columns[test_data.columns.duplicated()].tolist()
+        if duplicated_cols_test_before_encoding:
+            print(f"WARNING: Duplicate columns found in test_data BEFORE encoding: {duplicated_cols_test_before_encoding}")
+            test_data = test_data.loc[:, ~test_data.columns.duplicated(keep='first')]
+            print(f"         Duplicates removed from test_data. Columns now: {test_data.columns.tolist()}")
+    # --- End Diagnostic ---
+
     print(f"[Pipeline Stage - Config: {experiment_name}] Encoding ({encoding_method}, HPs: {encoding_params})...")
+    # Print column list right before encoding for detailed check
+    # print(f"DEBUG: train_data columns before preprocessor.encode: {train_data.columns.tolist()}")
+    # if test_data is not None and not test_data.empty:
+    # print(f"DEBUG: test_data columns before preprocessor.encode: {test_data.columns.tolist()}")
+
     train_data = preprocessor.encode(train_data, method=encoding_method, target_col=target_column, **encoding_params)
     if test_data is not None and not test_data.empty:
         test_data = preprocessor.encode(test_data, method=encoding_method, target_col=target_column, **encoding_params)

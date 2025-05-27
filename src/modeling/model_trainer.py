@@ -160,31 +160,59 @@ class ModelTrainer:
         X_train, y_train, X_test, y_test = None, None, None, None
         eval_set_description = "N/A"
         
-        if has_test_target:
-            X_train = _train_data.drop(columns=[target_column])
-            y_train = _train_data[target_column]
-            X_test = _test_data.drop(columns=[target_column])
-            y_test = _test_data[target_column]
-            eval_set_description = f"test_set (shape: {X_test.shape})"
+        # --- Robust extraction of X and y ---
+        # Handle y_train
+        if target_column not in _train_data.columns:
+            raise ValueError(f"Target column '{target_column}' not found in training data.")
+        y_train_raw = _train_data[target_column]
+        if isinstance(y_train_raw, pd.DataFrame):
+            print(f"Warning: y_train extracted from _train_data['{target_column}'] was a DataFrame (shape: {y_train_raw.shape}). Using its first column as the target variable.")
+            y_train = y_train_raw.iloc[:, 0]
         else:
-            # Use train_test_split for validation if no test target
-            # Ensure target column exists for stratification
-            if target_column not in _train_data.columns or _train_data[target_column].isnull().all():
-                 raise ValueError(f"Target column '{target_column}' for stratification is missing or all NaN in training data when creating validation set.")
-            
-            # Stratify only if target is suitable (e.g., categorical or binary with more than 1 class)
+            y_train = y_train_raw
+        
+        # Handle X_train (ensure no target column, even if duplicated)
+        X_train = _train_data.loc[:, _train_data.columns != target_column]
+        # ---
+
+        if has_test_target:
+            # --- Robust extraction for X_test and y_test ---
+            if target_column not in _test_data.columns:
+                 # This case should ideally be caught by has_test_target, but as a safeguard:
+                print(f"Warning: Target column '{target_column}' not found in test data despite has_test_target being true. Proceeding as if no test target.")
+                has_test_target = False # Correct the flag
+                X_test = _test_data.copy() # X_test will be all of test_data, y_test will be None
+                y_test = None
+            else:
+                y_test_raw = _test_data[target_column]
+                if isinstance(y_test_raw, pd.DataFrame):
+                    print(f"Warning: y_test extracted from _test_data['{target_column}'] was a DataFrame (shape: {y_test_raw.shape}). Using its first column as the target variable.")
+                    y_test = y_test_raw.iloc[:, 0]
+                else:
+                    y_test = y_test_raw
+                X_test = _test_data.loc[:, _test_data.columns != target_column]
+            # ---
+            eval_set_description = f"test_set (shape: {X_test.shape})"
+        
+        if not has_test_target: # This block executes if originally no test target OR if test target was problematic
+            if y_train is None or y_train.empty: # y_train should be populated from _train_data above
+                 raise ValueError(f"Target column '{target_column}' could not be properly extracted from training data for validation split.")
+
+            # Stratify only if target is suitable
             stratify_on = None
-            if y_train is not None and y_train.nunique() > 1 and y_train.nunique() < len(y_train):
+            if y_train.nunique() > 1 and y_train.nunique() < len(y_train): # Check after y_train is confirmed 1D
                 stratify_on = y_train
 
+            # X_train was already prepared, so we use it directly
+            # y_train was already prepared
             X_temp_train, X_val, y_temp_train, y_val = train_test_split(
-                _train_data.drop(columns=[target_column]),
-                _train_data[target_column],
+                X_train, # Use already prepared X_train
+                y_train, # Use already prepared y_train
                 test_size=self.validation_size,
                 random_state=self.random_state,
                 stratify=stratify_on
             )
-            X_train, y_train = X_temp_train, y_temp_train
+            X_train, y_train = X_temp_train, y_temp_train # Update X_train, y_train to be the smaller training portion
             X_test, y_test = X_val, y_val # X_test, y_test are now from the validation set
             eval_set_description = f"validation_set_from_train (shape: {X_test.shape})"
 

@@ -19,16 +19,9 @@ try:
     from gensim.models import FastText
     GENSIM_AVAILABLE = True
 except ImportError as e:
-    print(f"Error importing gensim: {e}")
-    print("Gensim not available. Install with: pip install gensim")
-
-# Conditional import for MissForest
-try:
-    from missingpy import MissForest
-    MISSFOREST_AVAILABLE = True
-except ImportError:
-    MISSFOREST_AVAILABLE = False
-    print("MissForest not available. Will use IterativeImputer as fallback when missforest method is selected.")
+    # print(f"Error importing gensim: {e}")
+    # print("Gensim not available. Install with: pip install gensim")
+    pass # Allow to run without gensim if not used
 
 class DataPreprocessor:
     """
@@ -135,13 +128,13 @@ class DataPreprocessor:
             else:
                 data_encoded[col] = pd.to_numeric(data_encoded[col], errors='coerce')
 
-        if MISSFOREST_AVAILABLE:
-            imputer = MissForest(max_iter=max_iter, n_estimators=n_estimators, random_state=random_state)
-        else:
+        if not MISSFOREST_AVAILABLE:
             imputer = IterativeImputer(
                 estimator=RandomForestRegressor(n_estimators=n_estimators, random_state=random_state),
                 max_iter=max_iter, random_state=random_state
             )
+        else:
+            imputer = MissForest(max_iter=max_iter, n_estimators=n_estimators, random_state=random_state)
 
         numeric_cols_for_impute = data_encoded.select_dtypes(include=np.number).columns
         imputed_array = imputer.fit_transform(data_encoded[numeric_cols_for_impute])
@@ -396,61 +389,85 @@ class DataPreprocessor:
         numeric_cols = data_imputed.select_dtypes(include=np.number).columns.tolist()
         categorical_cols = data_imputed.select_dtypes(exclude=np.number).columns.tolist()
 
+        # Handle categorical columns first with mode imputation (simple and common for non-targetted methods)
         for col in categorical_cols:
             if data_imputed[col].isnull().any():
                 data_imputed = self._impute_categorical_with_mode(data_imputed, col)
         
         numeric_cols_with_na = [col for col in numeric_cols if data_imputed[col].isnull().any()]
+        
         if not numeric_cols_with_na:
-            pass
+            # print("No numerical NAs to impute.")
+            pass # No numerical NAs to impute
         elif method == 'median':
+            # print("Imputing numerical columns with median.")
             for col in numeric_cols_with_na:
                 data_imputed = self._impute_numerical_with_median(data_imputed, col)
         elif method == 'knn':
-            # n_neighbors is now passed via kwargs from process_data
-            imputer_knn = KNNImputer(**kwargs) # Pass all relevant HPs for KNN
+            # print(f"Imputing numerical columns with KNN. Params: {kwargs}")
+            imputer_knn = KNNImputer(**kwargs) # Pass all relevant HPs for KNN (e.g., n_neighbors)
             data_imputed[numeric_cols_with_na] = imputer_knn.fit_transform(data_imputed[numeric_cols_with_na])
-        elif method == 'missforest':
-            if MISSFOREST_AVAILABLE:
-                mf_input_data = data_imputed.copy()
-                for col in mf_input_data.columns:
-                    if mf_input_data[col].dtype == 'object':
-                        mf_input_data[col] = pd.Categorical(mf_input_data[col])
-                if not mf_input_data.isnull().any().any():
-                    pass
-                else:
-                    try:
-                        # Pass relevant HPs like n_estimators, max_iter via kwargs
-                        imputer_mf = MissForest(random_state=42, **kwargs) 
-                        imputed_values = imputer_mf.fit_transform(mf_input_data)
-                        data_imputed = pd.DataFrame(imputed_values, columns=mf_input_data.columns, index=mf_input_data.index) # Added index
-                        for col in data.columns: 
-                            if col in data_imputed.columns and data[col].dtype != data_imputed[col].dtype:
-                                try:
-                                    data_imputed[col] = data_imputed[col].astype(data[col].dtype, errors='ignore')
-                                    if pd.api.types.is_numeric_dtype(data[col]) and not pd.api.types.is_numeric_dtype(data_imputed[col]):
-                                         data_imputed[col] = pd.to_numeric(data_imputed[col], errors='coerce')
-                                except Exception as e_dtype:
-                                    print(f"Warning: Could not restore dtype for column {col} after MissForest: {e_dtype}")
-                    except Exception as e_mf:
-                        print(f"Error during MissForest imputation: {e_mf}.")
-                        numeric_still_na = [nc for nc in numeric_cols if data_imputed[nc].isnull().any()]
-                        if numeric_still_na:
-                            iter_imputer = IterativeImputer(estimator=RandomForestRegressor(random_state=42),random_state=42,**kwargs) # Pass HPs to IterativeImputer too
-                            data_imputed[numeric_still_na] = iter_imputer.fit_transform(data_imputed[numeric_still_na])
-            else: 
+        elif method == 'missforest': # This now uses IterativeImputer
+            print(f"Using IterativeImputer with RandomForestRegressor for 'missforest' method. Params: {kwargs}")
+            
+            # Prepare parameters for IterativeImputer and RandomForestRegressor
+            iterative_imputer_hps = {}
+            rf_regressor_hps = {}
+
+            # Common HPs that might be passed via kwargs from GA
+            # For IterativeImputer:
+            if 'max_iter' in kwargs: iterative_imputer_hps['max_iter'] = kwargs['max_iter']
+            # For RandomForestRegressor (used as estimator):
+            if 'n_estimators' in kwargs: rf_regressor_hps['n_estimators'] = kwargs['n_estimators']
+            if 'max_features' in kwargs: rf_regressor_hps['max_features'] = kwargs['max_features'] # string or int
+            if 'min_samples_split' in kwargs: rf_regressor_hps['min_samples_split'] = kwargs['min_samples_split'] # int or float
+            if 'min_samples_leaf' in kwargs: rf_regressor_hps['min_samples_leaf'] = kwargs['min_samples_leaf'] # int or float
+            
+            # Add random_state for reproducibility if not provided by GA
+            iterative_imputer_hps.setdefault('random_state', 42)
+            rf_regressor_hps.setdefault('random_state', 42)
+            rf_regressor_hps.setdefault('n_jobs', -1) # Utilize all cores for RF
+
+            # Ensure n_estimators for RF is a positive integer, default if not set or invalid
+            if rf_regressor_hps.get('n_estimators', 0) <= 0:
+                rf_regressor_hps['n_estimators'] = 10 # Default to 10 estimators for RF in IterativeImputer
+
+            try:
+                # print(f"IterativeImputer HPs: {iterative_imputer_hps}")
+                # print(f"RandomForestRegressor HPs for IterativeImputer: {rf_regressor_hps}")
+
+                iter_imputer = IterativeImputer(
+                    estimator=RandomForestRegressor(**rf_regressor_hps),
+                    **iterative_imputer_hps
+                )
+                
+                # IterativeImputer should be applied to the part of the dataframe that needs imputation
+                # and has numeric features. Categorical features were already mode-imputed.
                 if numeric_cols_with_na:
-                    # Pass relevant HPs (though IterativeImputer HPs might differ slightly from MissForest direct HPs)
-                    iter_imputer = IterativeImputer(estimator=RandomForestRegressor(random_state=42),random_state=42,**kwargs) 
-                    data_imputed[numeric_cols_with_na] = iter_imputer.fit_transform(data_imputed[numeric_cols_with_na])
+                     # Create a copy of the subset for imputation to avoid SettingWithCopyWarning
+                    data_to_impute_subset = data_imputed[numeric_cols_with_na].copy()
+                    imputed_values = iter_imputer.fit_transform(data_to_impute_subset)
+                    data_imputed[numeric_cols_with_na] = imputed_values
+                # print("IterativeImputer with RandomForestRegressor applied.")
+
+            except Exception as e_iter_imp:
+                print(f"Error during IterativeImputer (for 'missforest' method) processing: {e_iter_imp}")
+                print("Falling back to median imputation for numeric columns due to IterativeImputer error.")
+                for col in numeric_cols_with_na:
+                    data_imputed = self._impute_numerical_with_median(data_imputed, col)
+
         elif method not in ['median', 'knn', 'missforest']:
             raise ValueError(f"Unknown imputation method: {method}")
         
+        # Final check for NAs after all imputation attempts
         if data_imputed.isnull().any().any():
-            print("Warning: NAs still present after imputation process.")
-            print(data_imputed.isnull().sum()[data_imputed.isnull().sum() > 0])
-        else:
-            pass
+            print("Warning: NAs still present after chosen imputation method and fallbacks.")
+            for col in data_imputed.columns:
+                if data_imputed[col].isnull().any():
+                    if pd.api.types.is_numeric_dtype(data_imputed[col]):
+                        data_imputed[col].fillna(0, inplace=True) # Fill numeric with 0
+                    else:
+                        data_imputed[col].fillna('__UNKNOWN_FINAL__', inplace=True) # Fill non-numeric
         return data_imputed
 
     def encode(self, data, method='label', target_col=None, **kwargs):

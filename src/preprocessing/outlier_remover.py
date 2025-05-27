@@ -105,20 +105,27 @@ class OutlierRemover:
             print(f"Unknown or unhandled outlier removal method: {self.method}. Returning original data.")
             return data
         
-        # Combine cleaned numeric data with original non-numeric data
-        if not data_cleaned.drop(columns=numeric_cols, errors='ignore').empty:
-            # Align indices before concatenating
-            # Ensure cleaned_numeric_data.index is a subset of data_cleaned.index if IF was used with dropna
-            common_index = cleaned_numeric_data.index.intersection(data_cleaned.index)
-            if self.method == 'isolation_forest' and not data_numeric_finite.index.equals(data_cleaned[numeric_cols].index):
-                 # If IF dropped rows due to NaNs, we need to be careful with rejoining
-                 # The cleaned_numeric_data already has the correct (potentially reduced) index from data_numeric_finite
-                 # We should use this index to select from non_numeric data
-                 final_data = pd.concat([cleaned_numeric_data, data_cleaned.drop(columns=numeric_cols, errors='ignore').loc[cleaned_numeric_data.index]], axis=1)
+        # --- CORRECTED LOGIC FOR FINAL DATA ASSEMBLY ---
+        if self.method == 'iqr':
+            final_data = cleaned_numeric_data # For IQR, cleaned_numeric_data is the full filtered dataframe
+        elif self.method == 'isolation_forest':
+            if not data_cleaned.drop(columns=numeric_cols, errors='ignore').empty:
+                # Align indices before concatenating
+                # Ensure cleaned_numeric_data.index is a subset of data_cleaned.index if IF was used with dropna
+                # common_index = cleaned_numeric_data.index.intersection(data_cleaned.index) # Not strictly needed here due to .loc
+                if not data_numeric_finite.index.equals(data_cleaned[numeric_cols].index):
+                     # If IF dropped rows due to NaNs, we need to be careful with rejoining
+                     # The cleaned_numeric_data already has the correct (potentially reduced) index from data_numeric_finite
+                     # We should use this index to select from non_numeric data
+                     final_data = pd.concat([cleaned_numeric_data, data_cleaned.drop(columns=numeric_cols, errors='ignore').loc[cleaned_numeric_data.index]], axis=1)
+                else:
+                     # This branch handles IF when no NaNs were dropped from numeric features, or other future numeric-only cleaning methods
+                     final_data = pd.concat([cleaned_numeric_data, data_cleaned.drop(columns=numeric_cols, errors='ignore').loc[cleaned_numeric_data.index]], axis=1)
             else:
-                 final_data = pd.concat([cleaned_numeric_data, data_cleaned.drop(columns=numeric_cols, errors='ignore').loc[cleaned_numeric_data.index]], axis=1)
-        else:
-            final_data = cleaned_numeric_data
+                # Only numeric columns were present in the input
+                final_data = cleaned_numeric_data
+        else: # Should technically not be reached if method is 'none', 'iqr', or 'isolation_forest'
+            final_data = data_cleaned # Fallback, though 'none' is handled at the start
 
         original_shape = data.shape
         cleaned_shape = final_data.shape
