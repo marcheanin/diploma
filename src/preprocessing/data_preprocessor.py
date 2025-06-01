@@ -273,14 +273,14 @@ class DataPreprocessor:
         if not cols_to_encode:
             return data
         data = data.copy()
-        if self.lsa_vectorizer is None: # Fit only once
+        if self.lsa_vectorizer is None: 
             texts = self._categorical_to_texts(data, cols_to_encode)
-            self.lsa_vectorizer = TfidfVectorizer(ngram_range=ngram_range, min_df=5, max_df=0.5) # Use passed ngram_range
+            self.lsa_vectorizer = TfidfVectorizer(ngram_range=ngram_range, min_df=5, max_df=0.5) 
             term_doc_matrix = self.lsa_vectorizer.fit_transform(texts)
-            self.lsa_svd = TruncatedSVD(n_components=n_components, random_state=42) # Use passed n_components
+            self.lsa_svd = TruncatedSVD(n_components=n_components, random_state=42) 
             lsa_embeddings = self.lsa_svd.fit_transform(term_doc_matrix)
             self.lsa_feature_names = [f'LSA_{i+1}' for i in range(n_components)]
-        else: # Transform using existing
+        else: 
             texts = self._categorical_to_texts(data, cols_to_encode)
             term_doc_matrix = self.lsa_vectorizer.transform(texts)
             lsa_embeddings = self.lsa_svd.transform(term_doc_matrix)

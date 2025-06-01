@@ -101,10 +101,7 @@ HP_MODEL_NN_DROPOUT = {0: 0.0, 1: 0.1, 2: 0.2, 3: 0.3, 4: 0.4, 5: 0.5} # HP2
 HP_MODEL_NN_LR = {0: 0.0001, 1: 0.0005, 2: 0.001, 3: 0.005, 4: 0.01, 5: 0.05} # HP3
 HP_MODEL_NN_BATCH_SIZE = {0: 16, 1: 32, 2: 64, 3: 128} # HP4 (New)
 
-# --- Gene Order and Structure ---
-# Each preprocessing step: [method_idx, hp1_idx, hp2_idx]
-# Model step: [method_idx, hp1_idx, hp2_idx, hp3_idx, hp4_idx] # Updated for model
-# Total genes = 5 * 3 + 1 (model method) + 4 (model HPs) = 15 + 1 + 4 = 20
+
 GENE_DESCRIPTIONS = [
     "Imputation Method", "Imputation HP1", "Imputation HP2",
     "Outlier Method", "Outlier HP1", "Outlier HP2",
@@ -114,11 +111,6 @@ GENE_DESCRIPTIONS = [
     "Model Method", "Model HP1", "Model HP2", "Model HP3", "Model HP4" # Added Model HP4
 ]
 
-# --- GA Parameters (placeholders, primary definition in ga_optimizer.py) ---
-# POPULATION_SIZE = 5 
-# NUM_GENERATIONS = 3 
-
-# --- Chromosome Definition and Decoding ---
 GENE_MAPS_LENGTHS = {
     'imputation': len(IMPUTATION_MAP),
     'outlier_removal': len(OUTLIER_MAP),
@@ -136,21 +128,18 @@ def decode_and_log_chromosome(chromosome):
         print(f"Error: Chromosome must have 20 genes, got {len(chromosome)}.")
         return None
 
-    decoded_chromosome_info = { # Renamed from decoded_chromosome to avoid conflict
+    decoded_chromosome_info = { 
         'chromosome_values': list(chromosome),
         'description': {},
         'pipeline_params': {}
     }
 
-    # Helper to safely get from map or return a default string
     def safe_get(gene_val, val_map, default_prefix="Unknown"):
         return val_map.get(gene_val, f"{default_prefix} (raw_val: {gene_val})")
 
-    # Helper to get HP value, with a note if index is out of bounds for the specific map
     def get_hp_value(hp_gene_val, hp_map, hp_name, method_name):
         val = hp_map.get(hp_gene_val)
         if val is None:
-            # print(f"  Warning: HP gene value {hp_gene_val} for {hp_name} of {method_name} is out of defined range. Method may use default or ignore.")
             return None 
         return val
 
@@ -348,9 +337,6 @@ def train_model(train_data_input, test_data_input, target_column, research_path,
         # print(f"Model hyperparameters received: {model_hyperparameters}")
         pass
 
-    # Only create the research_path directory if we are actually saving results or plotting curves for this run.
-    # This is also handled by process_data if save_model_artifacts is true there.
-    # Redundant check here is okay if save_run_results or plot_learning_curves is true
     if (save_run_results or plot_learning_curves) and research_path:
         os.makedirs(research_path, exist_ok=True)
     
@@ -389,20 +375,7 @@ def train_model(train_data_input, test_data_input, target_column, research_path,
             output_path=research_path, 
             plot_learning_curves=plot_learning_curves,
             save_run_results=save_run_results # Pass the flag through
-        )
-    
-    if metrics:
-        # print("\n--- Model Evaluation Metrics ---")
-        # for key, value in metrics.items():
-        #     if key != 'classification_report':
-        #         print(f"  {key}: {value}")
-        # if 'classification_report' in metrics:
-            # print(pd.DataFrame(metrics['classification_report']).transpose())
-        pass
-    else:
-        # print("Model training did not produce metrics.")
-        pass
-    
+        )    
     return metrics, feature_importance
 
 def main():
@@ -500,6 +473,5 @@ def main():
 
 
 if __name__ == "__main__":
-    #main() # Run the main function with test chromosomes
-    # To run the GA, you would uncomment the line below and comment out main()
+    # main()
     ga_optimizer.run_genetic_algorithm()

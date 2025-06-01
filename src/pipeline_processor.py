@@ -7,7 +7,6 @@ from preprocessing.data_loader import DataLoader
 from preprocessing.data_preprocessor import DataPreprocessor
 from preprocessing.outlier_remover import OutlierRemover
 from preprocessing.resampler import Resampler
-# from utils.data_analysis import analyze_target_correlations # Was commented out
 
 def get_dataset_name(path):
     """
@@ -63,33 +62,20 @@ def process_data(train_path, test_path, target_column,
     
     dataset_name = get_dataset_name(train_path)
     
-    # Experiment name includes method names only, HPs are too verbose for dir names
     experiment_name_parts = [imputation_method, outlier_method, encoding_method, resampling_method]
     if scaling_method != 'none':
         experiment_name_parts.append(scaling_method)
     experiment_name = "_".join(experiment_name_parts)
     
-    # Path for processed data files (e.g. train_processed.csv)
     results_path = os.path.join('results', dataset_name, experiment_name)
-    # Path for model-related research artifacts (e.g. learning curves, result summaries)
-    # This path might still be used by ModelTrainer even if directory isn't created here,
-    # if ModelTrainer receives it and decides to create subdirectories itself.
-    # However, not creating it here prevents empty directories if ModelTrainer also doesn't save.
     research_path = os.path.join("research", dataset_name, experiment_name)
     
     if save_processed_data:
         os.makedirs(results_path, exist_ok=True)
     
-    # Only create research_path if model artifacts are to be saved by this pipeline run
     if save_model_artifacts:
         os.makedirs(research_path, exist_ok=True)
-    # If save_model_artifacts is False, research_path is still constructed and passed,
-    # but the directory itself is not created by process_data.
-    # ModelTrainer will then decide if it wants to use this path (and potentially create it).
 
-    # Create a unique suffix for filenames if saving, including HPs would be too long.
-    # The GA evaluation will rely on directory structure + logs for HP tracking.
-    # For non-GA runs (save_processed_data=True), the path itself is a good identifier.
     output_suffix = f"_processed_{experiment_name}"
 
     print(f"\n[Pipeline Stage - Config: {experiment_name}] Loading data...")
@@ -151,7 +137,6 @@ def process_data(train_path, test_path, target_column,
     duplicated_cols_before_encoding = train_data.columns[train_data.columns.duplicated()].tolist()
     if duplicated_cols_before_encoding:
         print(f"WARNING: Duplicate columns found in train_data BEFORE encoding: {duplicated_cols_before_encoding}")
-        # Aggressively remove duplicates, keeping the first occurrence
         train_data = train_data.loc[:, ~train_data.columns.duplicated(keep='first')]
         print(f"         Duplicates removed. Columns now: {train_data.columns.tolist()}")
     if test_data is not None and not test_data.empty:
@@ -163,10 +148,6 @@ def process_data(train_path, test_path, target_column,
     # --- End Diagnostic ---
 
     print(f"[Pipeline Stage - Config: {experiment_name}] Encoding ({encoding_method}, HPs: {encoding_params})...")
-    # Print column list right before encoding for detailed check
-    # print(f"DEBUG: train_data columns before preprocessor.encode: {train_data.columns.tolist()}")
-    # if test_data is not None and not test_data.empty:
-    # print(f"DEBUG: test_data columns before preprocessor.encode: {test_data.columns.tolist()}")
 
     train_data = preprocessor.encode(train_data, method=encoding_method, target_col=target_column, **encoding_params)
     if test_data is not None and not test_data.empty:
@@ -183,7 +164,6 @@ def process_data(train_path, test_path, target_column,
             X_train_encoded = train_data.drop(columns=[target_column])
             y_train_encoded = train_data[target_column]
             
-            # Pass HPs to Resampler constructor or method
             resampler = Resampler(method=resampling_method, **resampling_params)
             X_train_resampled, y_train_resampled = resampler.fit_resample(X_train_encoded, y_train_encoded)
             
@@ -205,9 +185,9 @@ def process_data(train_path, test_path, target_column,
 
             scaler_instance = None
             if scaling_method == 'standard':
-                scaler_instance = StandardScaler(**scaling_params) # Pass HPs
+                scaler_instance = StandardScaler(**scaling_params)
             elif scaling_method == 'minmax':
-                scaler_instance = MinMaxScaler(**scaling_params) # Pass HPs (though minmax has few common HPs)
+                scaler_instance = MinMaxScaler(**scaling_params)
 
             if scaler_instance:
                 try:
@@ -269,10 +249,8 @@ def process_data(train_path, test_path, target_column,
         print(f"[Pipeline Stage - Config: {experiment_name}] Data processing complete. Processed data NOT saved (GA mode).")
         return train_data, test_data, research_path # Return DataFrames
 
-    # analyze_target_correlations was commented out, so not re-adding here for now.
-    
     # Return DataFrames directly if not saving, otherwise paths
     if not save_processed_data:
         return train_data, test_data, research_path
     else:
-        return train_data_path_out, test_data_path_out, research_path 
+        return train_data_path_out, test_data_path_out, research_path
