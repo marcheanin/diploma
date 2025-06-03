@@ -12,15 +12,15 @@ from sklearn.experimental import enable_iterative_imputer
 from sklearn.impute import IterativeImputer
 from category_encoders import LeaveOneOutEncoder
 
-# Optional imports for embeddings with improved error handling
+
 GENSIM_AVAILABLE = False
+MISSFOREST_AVAILABLE = False
 try:
     import gensim
     from gensim.models import FastText
     GENSIM_AVAILABLE = True
 except ImportError as e:
-    # print(f"Error importing gensim: {e}")
-    # print("Gensim not available. Install with: pip install gensim")
+
     pass # Allow to run without gensim if not used
 
 class DataPreprocessor:
@@ -409,46 +409,35 @@ class DataPreprocessor:
             data_imputed[numeric_cols_with_na] = imputer_knn.fit_transform(data_imputed[numeric_cols_with_na])
         elif method == 'missforest': # This now uses IterativeImputer
             print(f"Using IterativeImputer with RandomForestRegressor for 'missforest' method. Params: {kwargs}")
-            
-            # Prepare parameters for IterativeImputer and RandomForestRegressor
+
             iterative_imputer_hps = {}
             rf_regressor_hps = {}
 
-            # Common HPs that might be passed via kwargs from GA
-            # For IterativeImputer:
             if 'max_iter' in kwargs: iterative_imputer_hps['max_iter'] = kwargs['max_iter']
-            # For RandomForestRegressor (used as estimator):
+
             if 'n_estimators' in kwargs: rf_regressor_hps['n_estimators'] = kwargs['n_estimators']
             if 'max_features' in kwargs: rf_regressor_hps['max_features'] = kwargs['max_features'] # string or int
             if 'min_samples_split' in kwargs: rf_regressor_hps['min_samples_split'] = kwargs['min_samples_split'] # int or float
             if 'min_samples_leaf' in kwargs: rf_regressor_hps['min_samples_leaf'] = kwargs['min_samples_leaf'] # int or float
             
-            # Add random_state for reproducibility if not provided by GA
             iterative_imputer_hps.setdefault('random_state', 42)
             rf_regressor_hps.setdefault('random_state', 42)
-            rf_regressor_hps.setdefault('n_jobs', -1) # Utilize all cores for RF
+            rf_regressor_hps.setdefault('n_jobs', -1)
 
-            # Ensure n_estimators for RF is a positive integer, default if not set or invalid
             if rf_regressor_hps.get('n_estimators', 0) <= 0:
                 rf_regressor_hps['n_estimators'] = 10 # Default to 10 estimators for RF in IterativeImputer
 
             try:
-                # print(f"IterativeImputer HPs: {iterative_imputer_hps}")
-                # print(f"RandomForestRegressor HPs for IterativeImputer: {rf_regressor_hps}")
 
                 iter_imputer = IterativeImputer(
                     estimator=RandomForestRegressor(**rf_regressor_hps),
                     **iterative_imputer_hps
                 )
                 
-                # IterativeImputer should be applied to the part of the dataframe that needs imputation
-                # and has numeric features. Categorical features were already mode-imputed.
                 if numeric_cols_with_na:
-                     # Create a copy of the subset for imputation to avoid SettingWithCopyWarning
                     data_to_impute_subset = data_imputed[numeric_cols_with_na].copy()
                     imputed_values = iter_imputer.fit_transform(data_to_impute_subset)
                     data_imputed[numeric_cols_with_na] = imputed_values
-                # print("IterativeImputer with RandomForestRegressor applied.")
 
             except Exception as e_iter_imp:
                 print(f"Error during IterativeImputer (for 'missforest' method) processing: {e_iter_imp}")
