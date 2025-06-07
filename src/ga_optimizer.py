@@ -314,14 +314,12 @@ def run_genetic_algorithm():
     ga_base_research_path = os.path.join("research", get_dataset_name(train_path), "genetic_algorithm_runs")
     os.makedirs(ga_base_research_path, exist_ok=True)
 
-    population = initialize_population(POPULATION_SIZE) # Uses new 20-gene init
+    population = initialize_population(POPULATION_SIZE) 
     best_overall_chromosome = None
     best_overall_fitness = -1.0 
     best_fitness_over_generations = [] 
     all_individuals_details_over_generations = [] 
     
-    # New: To store best fitness per model type for each generation
-    # Structure: { 'model_type_name': [fitness_gen1, fitness_gen2, ...], ... }
     best_fitness_per_model_type_over_generations = {
         model_name: [] for model_name in MODEL_MAP.values()
     }
@@ -333,7 +331,7 @@ def run_genetic_algorithm():
             population_eval_results = [] 
 
             for i, ind_chromosome in enumerate(population):
-                # print(f"\nEvaluating Individual {i+1}/{POPULATION_SIZE} in Generation {gen+1}") # Reduced verbosity
+                print(f"\nEvaluating Individual {i+1}/{POPULATION_SIZE} in Generation {gen+1}")
                 current_fitness, current_model_type = evaluate_chromosome(ind_chromosome, train_path, test_path, target_column, ga_base_research_path, generate_learning_curves)
                 population_eval_results.append((ind_chromosome, current_fitness, current_model_type))
                 current_generation_details.append((current_fitness, current_model_type)) 
@@ -347,8 +345,7 @@ def run_genetic_algorithm():
             population_with_fitness = [(item[0], item[1]) for item in population_eval_results]
             
             if not population_eval_results: 
-                # print("Warning: Population is empty after evaluation (population_eval_results).") # Keep for potential error feedback
-                # Populate with NaN for this generation if no results
+                print("Warning: Population is empty after evaluation (population_eval_results).") # Keep for potential error feedback
                 for model_name in MODEL_MAP.values():
                     best_fitness_per_model_type_over_generations[model_name].append(np.nan)
                 best_fitness_over_generations.append(np.nan) # Also for overall best
@@ -468,13 +465,12 @@ def run_genetic_algorithm():
                         actual_data_x_coords = [generations_x_axis[i] for i, y_val in enumerate(original_fitness_list) if not pd.isna(y_val)]
                         actual_data_y_coords = [y_val for y_val in original_fitness_list if not pd.isna(y_val)]
                         
-                        if actual_data_x_coords: # If there are any actual data points to mark
+                        if actual_data_x_coords: 
                             plt.plot(actual_data_x_coords, actual_data_y_coords, 
                                      marker=model_markers.get(model_name, '.'), 
                                      linestyle='None', # Crucial: no line for this plot, just markers
                                      color=model_colors[model_name],
                                      markersize=7
-                                     # No label here, as the line plot already has it and is in legend_handles_map
                                      )
             
             # 3. Plot the overall best fitness line (highlighted)

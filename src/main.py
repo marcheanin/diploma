@@ -394,8 +394,8 @@ def main():
     # generate_learning_curves = False    
 
     # Chromosomes to test
-   # chromosome_1 = [2, 4, 0, 0, 0, 1, 2, 4, 0, 1, 0, 3, 2, 1, 0, 1, 7, 2, 5, 1] # MissForest TypeError
-    chromosome_2 = [0, 2, 1, 2, 3, 3, 1, 3, 0, 1, 0, 2, 2, 0, 0, 0, 7, 1, 0, 1] # y should be 1d array
+   # chromosome_1 = [2, 4, 0, 0, 0, 1, 2, 4, 0, 1, 0, 3, 2, 1, 0, 1, 7, 2, 5, 1] 
+    chromosome_2 = [1, 2, 2, 1, 3, 1, 1, 4, 4, 0, 1, 0, 2, 1, 0, 1, 6, 1, 0, 2]
 
     test_chromosomes = {
      #   "Chromosome_1_MissForest": chromosome_1,
