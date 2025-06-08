@@ -1,0 +1,150 @@
+{
+  "model_name": "UCI_Credit_Card_GA_best_20250608_145139",
+  "dataset": "datasets/UCI_Credit_Card.csv",
+  "target_column": "default.payment.next.month",
+  "features": [
+    "LIMIT_BAL",
+    "SEX",
+    "EDUCATION",
+    "MARRIAGE",
+    "AGE",
+    "PAY_0",
+    "PAY_2",
+    "PAY_3",
+    "PAY_4",
+    "PAY_5",
+    "PAY_6",
+    "BILL_AMT1",
+    "BILL_AMT2",
+    "BILL_AMT3",
+    "BILL_AMT4",
+    "BILL_AMT5",
+    "BILL_AMT6",
+    "PAY_AMT1",
+    "PAY_AMT2",
+    "PAY_AMT3",
+    "PAY_AMT4",
+    "PAY_AMT5",
+    "PAY_AMT6"
+  ],
+  "chromosome": [
+    2,
+    1,
+    3,
+    0,
+    2,
+    0,
+    1,
+    3,
+    2,
+    1,
+    2,
+    3,
+    1,
+    0,
+    1,
+    1,
+    5,
+    1,
+    2,
+    2
+  ],
+  "pipeline_config": {
+    "imputation_method": "missforest",
+    "imputation_params": {
+      "n_estimators": 50,
+      "max_iter": 20
+    },
+    "outlier_method": "none",
+    "outlier_params": {},
+    "resampling_method": "oversample",
+    "resampling_params": {
+      "sampling_strategy": 0.6
+    },
+    "encoding_method": "label",
+    "encoding_params": {},
+    "scaling_method": "standard",
+    "scaling_params": {
+      "with_mean": true,
+      "with_std": false
+    },
+    "model_type": "random_forest",
+    "model_params": {
+      "max_depth": 7,
+      "min_samples_split": 10,
+      "min_samples_leaf": 5
+    }
+  },
+  "metrics": {
+    "evaluation_set_description": "test_set (shape: (6000, 23))",
+    "accuracy": 0.8103333333333333,
+    "f1_score": 0.5234505862646566,
+    "f1_score_weighted": 0.8032299111732891,
+    "f1_score_micro": 0.8103333333333333,
+    "f1_score_macro": 0.7025284558456033,
+    "precision": 0.5813953488372093,
+    "recall": 0.476009139375476,
+    "roc_auc": 0.7755117743150789,
+    "auprc": 0.5424961851723517,
+    "classification_report": {
+      "0": {
+        "precision": 0.8603045685279188,
+        "recall": 0.9039897589076168,
+        "f1-score": 0.8816063254265502,
+        "support": 4687.0
+      },
+      "1": {
+        "precision": 0.5813953488372093,
+        "recall": 0.476009139375476,
+        "f1-score": 0.5234505862646566,
+        "support": 1313.0
+      },
+      "accuracy": 0.8103333333333333,
+      "macro avg": {
+        "precision": 0.7208499586825641,
+        "recall": 0.6899994491415464,
+        "f1-score": 0.7025284558456033,
+        "support": 6000.0
+      },
+      "weighted avg": {
+        "precision": 0.7992699342856019,
+        "recall": 0.8103333333333333,
+        "f1-score": 0.8032299111732891,
+        "support": 6000.0
+      }
+    }
+  },
+  "model_type": "random_forest",
+  "ga_results": {
+    "best_fitness": 0.5424961851723517,
+    "fitness_history": [
+      0.5409424858064787,
+      0.5409424858064787,
+      0.5424671308486567,
+      0.5424671308486567,
+      0.5424671308486567,
+      0.5424961851723517,
+      0.5424961851723517,
+      0.5424961851723517,
+      0.5424961851723517,
+      0.5424961851723517
+    ]
+  },
+  "created_at": "20250608_145139",
+  "source": "genetic_algorithm",
+  "model_info": {
+    "model_type": "random_forest",
+    "serialization_format": "joblib",
+    "model_path": "sklearn_model.joblib",
+    "created_at": "2025-06-08T14:51:39.282152",
+    "library_versions": {
+      "sklearn": "1.6.1",
+      "tensorflow": "2.19.0",
+      "pandas": "2.2.3",
+      "numpy": "1.26.4"
+    }
+  },
+  "preprocessor_path": "preprocessor_states.pkl",
+  "pipeline_created_at": "2025-06-08T14:51:39.343687",
+  "pipeline_version": "1.0"
+}
