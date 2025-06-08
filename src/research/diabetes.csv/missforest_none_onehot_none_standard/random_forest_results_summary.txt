@@ -1,0 +1,45 @@
+Model Type: random_forest
+Hyperparameters: {'n_estimators': 25, 'max_depth': 5, 'min_samples_split': 5, 'min_samples_leaf': 5}
+Evaluation Set: test_set (shape: (154, 8))
+
+Metrics:
+  evaluation_set_description: test_set (shape: (154, 8))
+  accuracy: 0.7727272727272727
+  f1_score_weighted: 0.7712372715859952
+  f1_score_micro: 0.7727272727272727
+  f1_score_macro: 0.7493839215139257
+  roc_auc: 0.8339761248852157
+  auprc: 0.7467339816850679
+  classification_report:
+    0:
+      precision: 0.8137
+      recall: 0.8384
+      f1-score: 0.8259
+      support: 99.0000
+    1:
+      precision: 0.6923
+      recall: 0.6545
+      f1-score: 0.6729
+      support: 55.0000
+    accuracy: 0.7727
+    macro avg:
+      precision: 0.7530
+      recall: 0.7465
+      f1-score: 0.7494
+      support: 154.0000
+    weighted avg:
+      precision: 0.7704
+      recall: 0.7727
+      f1-score: 0.7712
+      support: 154.0000
+
+Feature Importances:
+                    feature  importance
+1                   Glucose    0.365766
+5                       BMI    0.188458
+7                       Age    0.169184
+6  DiabetesPedigreeFunction    0.089635
+0               Pregnancies    0.054120
+4                   Insulin    0.050142
+3             SkinThickness    0.046966
+2             BloodPressure    0.035729

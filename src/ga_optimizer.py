@@ -4,29 +4,120 @@ import pandas as pd
 import matplotlib.pyplot as plt 
 
 # Imports from other project modules
-from pipeline_processor import process_data, get_dataset_name # Corrected import
-from main import (
-    train_model, decode_and_log_chromosome, 
-    IMPUTATION_MAP, OUTLIER_MAP, RESAMPLING_MAP, ENCODING_MAP, SCALING_MAP, MODEL_MAP,
-    HP_IMPUTATION_KNN_N_NEIGHBORS, HP_IMPUTATION_MISSFOREST_N_ESTIMATORS, HP_IMPUTATION_MISSFOREST_MAX_ITER,
-    HP_OUTLIER_IF_N_ESTIMATORS, HP_OUTLIER_IF_CONTAMINATION, HP_OUTLIER_IQR_MULTIPLIER,
-    HP_RESAMPLING_ROS_STRATEGY, HP_RESAMPLING_SMOTE_K_NEIGHBORS, HP_RESAMPLING_SMOTE_STRATEGY,
-    HP_RESAMPLING_ADASYN_N_NEIGHBORS, HP_RESAMPLING_ADASYN_STRATEGY,
-    HP_ENCODING_ONEHOT_MAX_CARDINALITY, HP_ENCODING_ONEHOT_DROP, HP_ENCODING_LSA_N_COMPONENTS,
-    HP_ENCODING_LSA_NGRAM_MAX, HP_ENCODING_W2V_DIM, HP_ENCODING_W2V_WINDOW,
-    HP_SCALING_STANDARD_WITH_MEAN, HP_SCALING_STANDARD_WITH_STD,
-    HP_MODEL_LOGREG_C, HP_MODEL_LOGREG_PENALTY_SOLVER, HP_MODEL_LOGREG_CLASS_WEIGHT, HP_MODEL_LOGREG_MAX_ITER,
-    HP_MODEL_RF_N_ESTIMATORS, HP_MODEL_RF_MAX_DEPTH, HP_MODEL_RF_MIN_SAMPLES_SPLIT, HP_MODEL_RF_MIN_SAMPLES_LEAF,
-    HP_MODEL_GB_N_ESTIMATORS, HP_MODEL_GB_LEARNING_RATE, HP_MODEL_GB_MAX_DEPTH, HP_MODEL_GB_SUBSAMPLE,
-    HP_MODEL_NN_LAYERS, HP_MODEL_NN_DROPOUT, HP_MODEL_NN_LR, HP_MODEL_NN_BATCH_SIZE
+from pipeline_processor import (
+    process_data, get_dataset_name, decode_and_log_chromosome,
+    ChromosomeConfig, train_model
 )
+
+class GAConfig:
+    """
+    Конфигурация для генетического алгоритма
+    """
+    def __init__(self, 
+                 train_path=None,
+                 test_path=None,
+                 target_column=None,
+                 population_size=10,
+                 num_generations=8,
+                 elitism_percent=0.25,
+                 mutation_rate=0.1,
+                 tournament_size=3,
+                 generate_learning_curves=False):
+        
+        # Обязательные параметры
+        if train_path is None:
+            raise ValueError("train_path is required")
+        if target_column is None:
+            raise ValueError("target_column is required")
+        
+        self.train_path = train_path
+        self.test_path = test_path
+        self.target_column = target_column
+        
+        # Параметры GA (с дефолтными значениями)
+        self.population_size = population_size
+        self.num_generations = num_generations
+        self.elitism_percent = elitism_percent
+        self.mutation_rate = mutation_rate
+        self.tournament_size = tournament_size
+        self.generate_learning_curves = generate_learning_curves
+        
+        # Для совместимости со старыми тестами
+        self.max_generations = num_generations
+    
+    def __str__(self):
+        return (f"GAConfig(train_path='{self.train_path}', "
+                f"target_column='{self.target_column}', "
+                f"population_size={self.population_size}, "
+                f"num_generations={self.num_generations})")
+
+# Получаем конфигурацию хромосом из нового модуля
+config = ChromosomeConfig()
+
+# Мапинги методов
+IMPUTATION_MAP = config.IMPUTATION_MAP
+OUTLIER_MAP = config.OUTLIER_MAP
+RESAMPLING_MAP = config.RESAMPLING_MAP
+ENCODING_MAP = config.ENCODING_MAP
+SCALING_MAP = config.SCALING_MAP
+MODEL_MAP = config.MODEL_MAP
+
+# Мапинги гиперпараметров
+HP_IMPUTATION_KNN_N_NEIGHBORS = config.HP_IMPUTATION_KNN_N_NEIGHBORS
+HP_IMPUTATION_MISSFOREST_N_ESTIMATORS = config.HP_IMPUTATION_MISSFOREST_N_ESTIMATORS
+HP_IMPUTATION_MISSFOREST_MAX_ITER = config.HP_IMPUTATION_MISSFOREST_MAX_ITER
+
+HP_OUTLIER_IF_N_ESTIMATORS = config.HP_OUTLIER_IF_N_ESTIMATORS
+HP_OUTLIER_IF_CONTAMINATION = config.HP_OUTLIER_IF_CONTAMINATION
+HP_OUTLIER_IQR_MULTIPLIER = config.HP_OUTLIER_IQR_MULTIPLIER
+
+HP_RESAMPLING_ROS_STRATEGY = config.HP_RESAMPLING_ROS_STRATEGY
+HP_RESAMPLING_SMOTE_K_NEIGHBORS = config.HP_RESAMPLING_SMOTE_K_NEIGHBORS
+HP_RESAMPLING_SMOTE_STRATEGY = config.HP_RESAMPLING_SMOTE_STRATEGY
+HP_RESAMPLING_ADASYN_N_NEIGHBORS = config.HP_RESAMPLING_ADASYN_N_NEIGHBORS
+HP_RESAMPLING_ADASYN_STRATEGY = config.HP_RESAMPLING_ADASYN_STRATEGY
+
+HP_ENCODING_ONEHOT_MAX_CARDINALITY = config.HP_ENCODING_ONEHOT_MAX_CARDINALITY
+HP_ENCODING_ONEHOT_DROP = config.HP_ENCODING_ONEHOT_DROP
+HP_ENCODING_LSA_N_COMPONENTS = config.HP_ENCODING_LSA_N_COMPONENTS
+HP_ENCODING_LSA_NGRAM_MAX = config.HP_ENCODING_LSA_NGRAM_MAX
+HP_ENCODING_W2V_DIM = config.HP_ENCODING_W2V_DIM
+HP_ENCODING_W2V_WINDOW = config.HP_ENCODING_W2V_WINDOW
+
+HP_SCALING_STANDARD_WITH_MEAN = config.HP_SCALING_STANDARD_WITH_MEAN
+HP_SCALING_STANDARD_WITH_STD = config.HP_SCALING_STANDARD_WITH_STD
+
+HP_MODEL_LOGREG_C = config.HP_MODEL_LOGREG_C
+HP_MODEL_LOGREG_PENALTY_SOLVER = config.HP_MODEL_LOGREG_PENALTY_SOLVER
+HP_MODEL_LOGREG_CLASS_WEIGHT = config.HP_MODEL_LOGREG_CLASS_WEIGHT
+HP_MODEL_LOGREG_MAX_ITER = config.HP_MODEL_LOGREG_MAX_ITER
+
+HP_MODEL_RF_N_ESTIMATORS = config.HP_MODEL_RF_N_ESTIMATORS
+HP_MODEL_RF_MAX_DEPTH = config.HP_MODEL_RF_MAX_DEPTH
+HP_MODEL_RF_MIN_SAMPLES_SPLIT = config.HP_MODEL_RF_MIN_SAMPLES_SPLIT
+HP_MODEL_RF_MIN_SAMPLES_LEAF = config.HP_MODEL_RF_MIN_SAMPLES_LEAF
+
+HP_MODEL_GB_N_ESTIMATORS = config.HP_MODEL_GB_N_ESTIMATORS
+HP_MODEL_GB_LEARNING_RATE = config.HP_MODEL_GB_LEARNING_RATE
+HP_MODEL_GB_MAX_DEPTH = config.HP_MODEL_GB_MAX_DEPTH
+HP_MODEL_GB_SUBSAMPLE = config.HP_MODEL_GB_SUBSAMPLE
+
+HP_MODEL_NN_LAYERS = config.HP_MODEL_NN_LAYERS
+HP_MODEL_NN_DROPOUT = config.HP_MODEL_NN_DROPOUT
+HP_MODEL_NN_LR = config.HP_MODEL_NN_LR
+HP_MODEL_NN_BATCH_SIZE = config.HP_MODEL_NN_BATCH_SIZE
 
 # --- GA Parameters ---
 POPULATION_SIZE = 10  
-NUM_GENERATIONS = 8 
+NUM_GENERATIONS = 8
+MAX_GENERATIONS = NUM_GENERATIONS  # Alias для совместимости с тестами
 ELITISM_PERCENT = 0.25 
 MUTATION_RATE = 0.1   
-TOURNAMENT_SIZE = 3  
+TOURNAMENT_SIZE = 3
+
+# --- Dataset Parameters ---
+TRAIN_PATH = "../datasets/diabetes.csv"  # Относительный путь из папки src
+TARGET_COLUMN = "Outcome"  
 
 
 GENE_CHOICES_COUNT = [
@@ -275,46 +366,48 @@ def evaluate_chromosome(chromosome_genes, train_path_ga, test_path_ga, target_co
     print(f"Final Chromosome: {chromosome_genes}, Decoded Model: {model_type_for_return}, Fitness: {fitness:.4f}")
     return fitness, model_type_for_return
 
-def run_genetic_algorithm():
-    """Main function to set up and run the genetic algorithm."""
-    # print("\n=== Setting up GA for Credit Score Dataset ===") # Keep for context
-
-    # train_path = "datasets/credit-score-classification/train.csv"
-    # test_path = "datasets/credit-score-classification/test.csv"
-    # target_column = "Credit_Score"
-
-    # train_path = "datasets/credit-score-classification-manual-cleaned.csv"
-    # test_path = None
-    # target_column = "Credit_Score"
-
-    train_path = "datasets/diabetes.csv"
-    test_path = None
-    target_column = "Outcome"
-
-    # train_path = "datasets/UCI_Credit_Card.csv"
-    # test_path = None
-    # target_column = "default.payment.next.month"
-
-    # train_path = "datasets/Loan_Default.csv"
-    # test_path = None
-    # target_column = "Status"
+def run_genetic_algorithm(ga_config=None):
+    """
+    Main function to set up and run the genetic algorithm.
+    
+    Args:
+        ga_config: GAConfig instance with parameters, or None for default config
+    """
+    # Создаем конфигурацию по умолчанию если не передана
+    if ga_config is None:
+        ga_config = GAConfig(
+            train_path=TRAIN_PATH,
+            test_path=None,
+            target_column=TARGET_COLUMN
+        )
+    
+    print(f"\n=== Starting Genetic Algorithm ===")
+    print(f"Configuration: {ga_config}")
+    
+    # Извлекаем параметры из конфигурации
+    train_path = ga_config.train_path
+    test_path = ga_config.test_path
+    target_column = ga_config.target_column
+    population_size = ga_config.population_size
+    num_generations = ga_config.num_generations
+    elitism_percent = ga_config.elitism_percent
+    mutation_rate = ga_config.mutation_rate
+    tournament_size = ga_config.tournament_size
+    generate_learning_curves = ga_config.generate_learning_curves
 
     # --- Check for dataset existence ---
     if not os.path.exists(train_path):
         print(f"Error: Training data file not found at: {train_path}")
-        return
+        return None
     if test_path is not None and not os.path.exists(test_path):
         print(f"Error: Test data file not found at: {test_path}")
-        return
+        return None
     # ---
-    
-    generate_learning_curves = False
 
-    # print("\n=== Starting Genetic Algorithm ===") # Keep for context
     ga_base_research_path = os.path.join("research", get_dataset_name(train_path), "genetic_algorithm_runs")
     os.makedirs(ga_base_research_path, exist_ok=True)
 
-    population = initialize_population(POPULATION_SIZE) 
+    population = initialize_population(population_size) 
     best_overall_chromosome = None
     best_overall_fitness = -1.0 
     best_fitness_over_generations = [] 
@@ -325,13 +418,13 @@ def run_genetic_algorithm():
     }
 
     try: 
-        for gen in range(NUM_GENERATIONS):
-            print(f"\n--- Generation {gen + 1}/{NUM_GENERATIONS} ---") # Keep for progress tracking
+        for gen in range(num_generations):
+            print(f"\n--- Generation {gen + 1}/{num_generations} ---") # Keep for progress tracking
             current_generation_details = [] 
             population_eval_results = [] 
 
             for i, ind_chromosome in enumerate(population):
-                print(f"\nEvaluating Individual {i+1}/{POPULATION_SIZE} in Generation {gen+1}")
+                print(f"\nEvaluating Individual {i+1}/{population_size} in Generation {gen+1}")
                 current_fitness, current_model_type = evaluate_chromosome(ind_chromosome, train_path, test_path, target_column, ga_base_research_path, generate_learning_curves)
                 population_eval_results.append((ind_chromosome, current_fitness, current_model_type))
                 current_generation_details.append((current_fitness, current_model_type)) 
@@ -372,15 +465,15 @@ def run_genetic_algorithm():
             print(f"\nEnd of Generation {gen + 1}. Best overall fitness in this generation: {current_gen_best_overall_fitness:.4f}") # Reduced verbosity
             print(f"Best chromosome this generation: {population_eval_results[0][0]} (Model: {current_gen_best_overall_model_type}, Fitness: {population_eval_results[0][1]:.4f})") # Reduced verbosity
 
-            if gen < NUM_GENERATIONS - 1:
+            if gen < num_generations - 1:
                 next_population = []
-                num_elite = int(POPULATION_SIZE * ELITISM_PERCENT)
+                num_elite = int(population_size * elitism_percent)
                 
                 if num_elite > 0 and population_eval_results:
                     elite_individuals = [item[0] for item in population_eval_results[:num_elite]]
                     next_population.extend(elite_individuals)
 
-                num_offspring_needed = POPULATION_SIZE - len(next_population)
+                num_offspring_needed = population_size - len(next_population)
                 offspring_generated = 0
 
                 if not population_with_fitness:
@@ -389,24 +482,24 @@ def run_genetic_algorithm():
                     # Generate offspring through crossover and mutation
                     while offspring_generated < num_offspring_needed:
                         # Select parents using population_with_fitness (chromosome, fitness)
-                        parent1 = select_parent_tournament(population_with_fitness, TOURNAMENT_SIZE)
-                        parent2 = select_parent_tournament(population_with_fitness, TOURNAMENT_SIZE)
+                        parent1 = select_parent_tournament(population_with_fitness, tournament_size)
+                        parent2 = select_parent_tournament(population_with_fitness, tournament_size)
                         
                         offspring1, offspring2 = crossover(parent1, parent2)
                         
-                        mutated_offspring1 = mutate(offspring1, MUTATION_RATE, GENE_CHOICES_COUNT)
+                        mutated_offspring1 = mutate(offspring1, mutation_rate, GENE_CHOICES_COUNT)
                         if offspring_generated < num_offspring_needed:
                             next_population.append(mutated_offspring1)
                             offspring_generated += 1
                         
                         if offspring_generated < num_offspring_needed:
-                            mutated_offspring2 = mutate(offspring2, MUTATION_RATE, GENE_CHOICES_COUNT)
+                            mutated_offspring2 = mutate(offspring2, mutation_rate, GENE_CHOICES_COUNT)
                             next_population.append(mutated_offspring2)
                             offspring_generated += 1
                 
-                population = next_population[:POPULATION_SIZE] 
-                if not population and POPULATION_SIZE > 0:
-                    population = initialize_population(POPULATION_SIZE)
+                population = next_population[:population_size] 
+                if not population and population_size > 0:
+                    population = initialize_population(population_size)
 
     finally: 
         if best_fitness_over_generations:
@@ -518,6 +611,14 @@ def run_genetic_algorithm():
         print(f"Best overall fitness (AUPRC): {best_overall_fitness:.4f}") # Keep for results
     else:
         print("No successful evaluation run or no improvement found in the GA.") # Keep for context
+    
+    # Возвращаем результаты оптимизации
+    return {
+        'best_chromosome': best_overall_chromosome,
+        'best_fitness': best_overall_fitness,
+        'fitness_history': best_fitness_over_generations,
+        'config': ga_config
+    }
 
 if __name__ == '__main__':
     run_genetic_algorithm() 

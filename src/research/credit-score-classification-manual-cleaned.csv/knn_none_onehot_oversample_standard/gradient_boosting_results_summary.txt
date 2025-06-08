@@ -1,0 +1,63 @@
+Model Type: gradient_boosting
+Hyperparameters: {'n_estimators': 200, 'learning_rate': 0.01, 'max_depth': 3, 'subsample': 0.7}
+Evaluation Set: test_set (shape: (17790, 21))
+
+Metrics:
+  evaluation_set_description: test_set (shape: (17790, 21))
+  accuracy: 0.7065205171444632
+  f1_score_weighted: 0.7098457959157902
+  f1_score_micro: 0.7065205171444632
+  f1_score_macro: 0.6917632227094082
+  roc_auc: 0.8320097632413356
+  auprc: 0.7562202353659022
+  classification_report:
+    0:
+      precision: 0.5252
+      recall: 0.8556
+      f1-score: 0.6509
+      support: 3240.0000
+    1:
+      precision: 0.7644
+      recall: 0.6026
+      f1-score: 0.6739
+      support: 5229.0000
+    2:
+      precision: 0.7921
+      recall: 0.7130
+      f1-score: 0.7505
+      support: 9321.0000
+    accuracy: 0.7065
+    macro avg:
+      precision: 0.6939
+      recall: 0.7237
+      f1-score: 0.6918
+      support: 17790.0000
+    weighted avg:
+      precision: 0.7354
+      recall: 0.7065
+      f1-score: 0.7098
+      support: 17790.0000
+
+Feature Importances:
+                      feature  importance
+12                 Credit_Mix    0.295407
+6               Interest_Rate    0.275531
+13           Outstanding_Debt    0.260317
+10       Changed_Credit_Limit    0.045461
+17    Amount_invested_monthly    0.025723
+15      Payment_of_Min_Amount    0.025275
+5             Num_Credit_Card    0.021430
+8         Delay_from_due_date    0.015877
+16        Total_EMI_per_month    0.015084
+11       Num_Credit_Inquiries    0.009014
+20  Credit_History_Age_Months    0.005635
+4           Num_Bank_Accounts    0.002927
+2               Annual_Income    0.000687
+18          Payment_Behaviour    0.000666
+3       Monthly_Inhand_Salary    0.000630
+9      Num_of_Delayed_Payment    0.000171
+7                 Num_of_Loan    0.000064
+0                         Age    0.000044
+1                  Occupation    0.000030
+19            Monthly_Balance    0.000022
+14   Credit_Utilization_Ratio    0.000004

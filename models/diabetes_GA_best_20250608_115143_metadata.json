@@ -1,0 +1,120 @@
+{
+  "model_name": "diabetes_GA_best_20250608_115143",
+  "dataset": "../datasets/diabetes.csv",
+  "target_column": "Outcome",
+  "chromosome": [
+    0,
+    1,
+    1,
+    1,
+    2,
+    5,
+    3,
+    0,
+    4,
+    1,
+    2,
+    2,
+    1,
+    0,
+    0,
+    1,
+    6,
+    2,
+    2,
+    2
+  ],
+  "pipeline_config": {
+    "imputation_method": "knn",
+    "imputation_params": {
+      "n_neighbors": 5
+    },
+    "outlier_method": "isolation_forest",
+    "outlier_params": {
+      "n_estimators": 100,
+      "contamination": 0.15
+    },
+    "resampling_method": "adasyn",
+    "resampling_params": {
+      "n_neighbors": 3,
+      "sampling_strategy": 0.75
+    },
+    "encoding_method": "label",
+    "encoding_params": {},
+    "scaling_method": "standard",
+    "scaling_params": {
+      "with_mean": true,
+      "with_std": true
+    },
+    "model_type": "random_forest",
+    "model_params": {
+      "max_depth": 10,
+      "min_samples_split": 10,
+      "min_samples_leaf": 5
+    }
+  },
+  "metrics": {
+    "evaluation_set_description": "test_set (shape: (154, 8))",
+    "accuracy": 0.7532467532467533,
+    "f1_score_weighted": 0.7569655521783181,
+    "f1_score_micro": 0.7532467532467533,
+    "f1_score_macro": 0.7406028368794326,
+    "roc_auc": 0.8231404958677686,
+    "auprc": 0.7206027994709477,
+    "classification_report": {
+      "0": {
+        "precision": 0.8426966292134831,
+        "recall": 0.7575757575757576,
+        "f1-score": 0.7978723404255319,
+        "support": 99.0
+      },
+      "1": {
+        "precision": 0.6307692307692307,
+        "recall": 0.7454545454545455,
+        "f1-score": 0.6833333333333333,
+        "support": 55.0
+      },
+      "accuracy": 0.7532467532467533,
+      "macro avg": {
+        "precision": 0.736732929991357,
+        "recall": 0.7515151515151515,
+        "f1-score": 0.7406028368794326,
+        "support": 154.0
+      },
+      "weighted avg": {
+        "precision": 0.76700827262625,
+        "recall": 0.7532467532467533,
+        "f1-score": 0.7569655521783181,
+        "support": 154.0
+      }
+    }
+  },
+  "preprocessor_states": {
+    "imputation": {
+      "method": "knn",
+      "params": {
+        "n_neighbors": 5
+      }
+    },
+    "encoding": {
+      "method": "label",
+      "params": {}
+    },
+    "scaling": {
+      "method": "standard",
+      "params": {
+        "with_mean": true,
+        "with_std": true
+      }
+    }
+  },
+  "ga_results": {
+    "best_fitness": 0.7206027994709477,
+    "fitness_history": [
+      0.7206027994709477,
+      0.7206027994709477
+    ]
+  },
+  "created_at": "20250608_115143",
+  "source": "genetic_algorithm"
+}
