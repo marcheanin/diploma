@@ -33,13 +33,11 @@ class DataLoader:
             tuple: (train_data, test_data) - pandas DataFrames
         """
         if self.train_path and self.test_path:
-            # Load separate train and test datasets
             self.train_data = pd.read_csv(self.train_path)
             self.test_data = pd.read_csv(self.test_path)
             print(f"Loaded train dataset: {self.train_path}")
             print(f"Loaded test dataset: {self.test_path}")
         elif self.train_path:
-            # Load single dataset and split
             full_data = pd.read_csv(self.train_path)
             print(f"Loaded full dataset: {self.train_path}")
             print(f"Splitting into train ({1-self.test_size:.0%}) and test ({self.test_size:.0%}) sets...")

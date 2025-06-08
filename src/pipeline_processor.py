@@ -1,5 +1,6 @@
 import os
 import pandas as pd
+import numpy as np
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, LabelEncoder
 
 # Assuming these modules are in the same directory or PYTHONPATH is set up
@@ -7,7 +8,350 @@ from preprocessing.data_loader import DataLoader
 from preprocessing.data_preprocessor import DataPreprocessor
 from preprocessing.outlier_remover import OutlierRemover
 from preprocessing.resampler import Resampler
-# from utils.data_analysis import analyze_target_correlations # Was commented out
+from modeling.model_trainer import ModelTrainer
+
+
+class ChromosomeConfig:
+    
+    IMPUTATION_MAP = {0: 'knn', 1: 'median', 2: 'missforest'}
+    OUTLIER_MAP = {0: 'none', 1: 'isolation_forest', 2: 'iqr'}
+    RESAMPLING_MAP = {0: 'none', 1: 'oversample', 2: 'smote', 3: 'adasyn'}
+    ENCODING_MAP = {0: 'onehot', 1: 'label', 2: 'lsa', 3: 'word2vec'}
+    SCALING_MAP = {0: 'none', 1: 'standard', 2: 'minmax'}
+    MODEL_MAP = {0: 'logistic_regression', 1: 'random_forest', 2: 'gradient_boosting', 3: 'neural_network'}
+    
+    HP_IMPUTATION_KNN_N_NEIGHBORS = {0: 3, 1: 5, 2: 7, 3: 10, 4: 15}
+    HP_IMPUTATION_MISSFOREST_N_ESTIMATORS = {0: 30, 1: 50, 2: 100, 3: 150, 4: 200}
+    HP_IMPUTATION_MISSFOREST_MAX_ITER = {0: 5, 1: 10, 2: 15, 3: 20}
+    
+    HP_OUTLIER_IF_N_ESTIMATORS = {0: 30, 1: 50, 2: 100, 3: 150, 4: 200}
+    HP_OUTLIER_IF_CONTAMINATION = {0: 'auto', 1: 0.01, 2: 0.025, 3: 0.05, 4: 0.1, 5: 0.15}
+    HP_OUTLIER_IQR_MULTIPLIER = {0: 1.5, 1: 2.0, 2: 2.5, 3: 3.0}
+    
+    HP_RESAMPLING_ROS_STRATEGY = {0: 'auto', 1: 'minority', 2: 0.5, 3: 0.6, 4: 0.75}
+    HP_RESAMPLING_SMOTE_K_NEIGHBORS = {0: 3, 1: 5, 2: 7, 3: 9}
+    HP_RESAMPLING_SMOTE_STRATEGY = {0: 'auto', 1: 'minority', 2: 0.5, 3: 0.6, 4: 0.75}
+    HP_RESAMPLING_ADASYN_N_NEIGHBORS = {0: 3, 1: 5, 2: 7, 3: 9}
+    HP_RESAMPLING_ADASYN_STRATEGY = {0: 'auto', 1: 'minority', 2: 0.5, 3: 0.6, 4: 0.75}
+    
+    HP_ENCODING_ONEHOT_MAX_CARDINALITY = {0: 10, 1: 20, 2: 50, 3: 100}
+    HP_ENCODING_ONEHOT_DROP = {0: None, 1: 'first'}
+    HP_ENCODING_LSA_N_COMPONENTS = {0: 5, 1: 10, 2: 25, 3: 50, 4: 75}
+    HP_ENCODING_LSA_NGRAM_MAX = {0: 1, 1: 2, 2: 3}
+    HP_ENCODING_W2V_DIM = {0: 25, 1: 50, 2: 75, 3: 100, 4: 150}
+    HP_ENCODING_W2V_WINDOW = {0: 1, 1: 2, 2: 3, 3: 5, 4: 7}
+    
+    HP_SCALING_STANDARD_WITH_MEAN = {0: True, 1: False}
+    HP_SCALING_STANDARD_WITH_STD = {0: True, 1: False}
+    
+    HP_MODEL_LOGREG_C = {0: 0.001, 1: 0.01, 2: 0.1, 3: 1.0, 4: 10.0, 5: 100.0}
+    HP_MODEL_LOGREG_PENALTY_SOLVER = {
+        0: {'penalty': 'l2', 'solver': 'lbfgs', 'l1_ratio': None}, 
+        1: {'penalty': 'l1', 'solver': 'liblinear', 'l1_ratio': None},
+        2: {'penalty': 'l2', 'solver': 'liblinear', 'l1_ratio': None}, 
+        3: {'penalty': 'l1', 'solver': 'saga', 'l1_ratio': None},
+        4: {'penalty': 'l2', 'solver': 'saga', 'l1_ratio': None}, 
+        5: {'penalty': 'elasticnet', 'solver': 'saga', 'l1_ratio': 0.5}
+    }
+    HP_MODEL_LOGREG_CLASS_WEIGHT = {0: None, 1: 'balanced'}
+    HP_MODEL_LOGREG_MAX_ITER = {0: 100, 1: 200, 2: 300, 3: 500}
+    
+    HP_MODEL_RF_N_ESTIMATORS = {0: 25, 1: 50, 2: 100, 3: 200, 4: 300}
+    HP_MODEL_RF_MAX_DEPTH = {0: 5, 1: 7, 2: 10, 3: 15, 4: 20, 5: None}
+    HP_MODEL_RF_MIN_SAMPLES_SPLIT = {0: 2, 1: 5, 2: 10, 3: 15}
+    HP_MODEL_RF_MIN_SAMPLES_LEAF = {0: 1, 1: 2, 2: 5, 3: 10}
+    
+    HP_MODEL_GB_N_ESTIMATORS = {0: 25, 1: 50, 2: 100, 3: 200, 4: 300}
+    HP_MODEL_GB_LEARNING_RATE = {0: 0.005, 1: 0.01, 2: 0.05, 3: 0.1, 4: 0.2}
+    HP_MODEL_GB_MAX_DEPTH = {0: 2, 1: 3, 2: 4, 3: 5, 4: 7}
+    HP_MODEL_GB_SUBSAMPLE = {0: 0.7, 1: 0.8, 2: 0.9, 3: 1.0}
+    
+    HP_MODEL_NN_LAYERS = {
+        0: (32,), 1: (64,), 2: (128,),
+        3: (32, 32), 4: (64, 32), 5: (128, 64), 
+        6: (64, 64), 7: (128, 64, 32)
+    }
+    HP_MODEL_NN_DROPOUT = {0: 0.0, 1: 0.1, 2: 0.2, 3: 0.3, 4: 0.4, 5: 0.5}
+    HP_MODEL_NN_LR = {0: 0.0001, 1: 0.0005, 2: 0.001, 3: 0.005, 4: 0.01, 5: 0.05}
+    HP_MODEL_NN_BATCH_SIZE = {0: 16, 1: 32, 2: 64, 3: 128}
+    
+    GENE_DESCRIPTIONS = [
+        "Imputation Method", "Imputation HP1", "Imputation HP2",
+        "Outlier Method", "Outlier HP1", "Outlier HP2",
+        "Resampling Method", "Resampling HP1", "Resampling HP2",
+        "Encoding Method", "Encoding HP1", "Encoding HP2",
+        "Scaling Method", "Scaling HP1", "Scaling HP2",
+        "Model Method", "Model HP1", "Model HP2", "Model HP3", "Model HP4"
+    ]
+    
+    @classmethod
+    def get_gene_ranges(cls):
+        return [
+            len(cls.IMPUTATION_MAP),
+            max(len(cls.HP_IMPUTATION_KNN_N_NEIGHBORS), len(cls.HP_IMPUTATION_MISSFOREST_N_ESTIMATORS)),
+            len(cls.HP_IMPUTATION_MISSFOREST_MAX_ITER),
+            
+            len(cls.OUTLIER_MAP),
+            max(len(cls.HP_OUTLIER_IF_N_ESTIMATORS), len(cls.HP_OUTLIER_IQR_MULTIPLIER)),
+            len(cls.HP_OUTLIER_IF_CONTAMINATION),
+            
+            len(cls.RESAMPLING_MAP),
+            max(len(cls.HP_RESAMPLING_ROS_STRATEGY), len(cls.HP_RESAMPLING_SMOTE_K_NEIGHBORS), len(cls.HP_RESAMPLING_ADASYN_N_NEIGHBORS)),
+            max(len(cls.HP_RESAMPLING_SMOTE_STRATEGY), len(cls.HP_RESAMPLING_ADASYN_STRATEGY)),
+            
+            len(cls.ENCODING_MAP),
+            max(len(cls.HP_ENCODING_ONEHOT_MAX_CARDINALITY), len(cls.HP_ENCODING_LSA_N_COMPONENTS), len(cls.HP_ENCODING_W2V_DIM)),
+            max(len(cls.HP_ENCODING_ONEHOT_DROP), len(cls.HP_ENCODING_LSA_NGRAM_MAX), len(cls.HP_ENCODING_W2V_WINDOW)),
+            
+            len(cls.SCALING_MAP),
+            len(cls.HP_SCALING_STANDARD_WITH_MEAN),
+            len(cls.HP_SCALING_STANDARD_WITH_STD),
+            
+            len(cls.MODEL_MAP),
+            max(len(cls.HP_MODEL_LOGREG_C), len(cls.HP_MODEL_RF_N_ESTIMATORS), len(cls.HP_MODEL_GB_N_ESTIMATORS), len(cls.HP_MODEL_NN_LAYERS)),
+            max(len(cls.HP_MODEL_LOGREG_PENALTY_SOLVER), len(cls.HP_MODEL_RF_MAX_DEPTH), len(cls.HP_MODEL_GB_LEARNING_RATE), len(cls.HP_MODEL_NN_DROPOUT)),
+            max(len(cls.HP_MODEL_LOGREG_CLASS_WEIGHT), len(cls.HP_MODEL_RF_MIN_SAMPLES_SPLIT), len(cls.HP_MODEL_GB_MAX_DEPTH), len(cls.HP_MODEL_NN_LR)),
+            max(len(cls.HP_MODEL_LOGREG_MAX_ITER), len(cls.HP_MODEL_RF_MIN_SAMPLES_LEAF), len(cls.HP_MODEL_GB_SUBSAMPLE), len(cls.HP_MODEL_NN_BATCH_SIZE))
+        ]
+
+
+class ChromosomeDecoder:
+    
+    def __init__(self):
+        self.config = ChromosomeConfig()
+    
+    def decode_chromosome(self, chromosome, verbose=True):
+        if len(chromosome) != 20:
+            print(f"[ChromosomeDecoder] Ошибка: хромосома должна содержать 20 генов, получено {len(chromosome)}")
+            return None
+        
+        if verbose:
+            print(f"[ChromosomeDecoder] Декодирование хромосомы: {list(chromosome)}")
+        
+        decoded_info = {
+            'chromosome_values': list(chromosome),
+            'description': {},
+            'pipeline_params': {}
+        }
+        
+        self._decode_imputation(chromosome, decoded_info, verbose)
+        self._decode_outlier_removal(chromosome, decoded_info, verbose)
+        self._decode_resampling(chromosome, decoded_info, verbose)
+        self._decode_encoding(chromosome, decoded_info, verbose)
+        self._decode_scaling(chromosome, decoded_info, verbose)
+        self._decode_model(chromosome, decoded_info, verbose)
+        
+        if verbose:
+            self._print_summary(decoded_info)
+        
+        return decoded_info
+    
+    def _get_hp_value(self, gene_val, hp_map):
+        return hp_map.get(gene_val)
+    
+    def _decode_imputation(self, chromosome, decoded_info, verbose):
+        method_idx, hp1_idx, hp2_idx = chromosome[0], chromosome[1], chromosome[2]
+        method = self.config.IMPUTATION_MAP.get(method_idx, "unknown")
+        
+        decoded_info['pipeline_params']['imputation_method'] = method
+        
+        params = {}
+        if method == 'knn':
+            params['n_neighbors'] = self._get_hp_value(hp1_idx, self.config.HP_IMPUTATION_KNN_N_NEIGHBORS)
+        elif method == 'missforest':
+            params['n_estimators'] = self._get_hp_value(hp1_idx, self.config.HP_IMPUTATION_MISSFOREST_N_ESTIMATORS)
+            params['max_iter'] = self._get_hp_value(hp2_idx, self.config.HP_IMPUTATION_MISSFOREST_MAX_ITER)
+        
+        decoded_info['pipeline_params']['imputation_params'] = {k: v for k, v in params.items() if v is not None}
+        
+        if verbose:
+            print(f"  Импутация: {method}, параметры: {decoded_info['pipeline_params']['imputation_params']}")
+    
+    def _decode_outlier_removal(self, chromosome, decoded_info, verbose):
+        """Декодирует гены удаления выбросов (3, 4, 5)"""
+        method_idx, hp1_idx, hp2_idx = chromosome[3], chromosome[4], chromosome[5]
+        method = self.config.OUTLIER_MAP.get(method_idx, "unknown")
+        
+        decoded_info['pipeline_params']['outlier_method'] = method
+        
+        params = {}
+        if method == 'isolation_forest':
+            params['n_estimators'] = self._get_hp_value(hp1_idx, self.config.HP_OUTLIER_IF_N_ESTIMATORS)
+            params['contamination'] = self._get_hp_value(hp2_idx, self.config.HP_OUTLIER_IF_CONTAMINATION)
+        elif method == 'iqr':
+            params['multiplier'] = self._get_hp_value(hp1_idx, self.config.HP_OUTLIER_IQR_MULTIPLIER)
+        
+        decoded_info['pipeline_params']['outlier_params'] = {k: v for k, v in params.items() if v is not None}
+        
+        if verbose:
+            print(f"  Удаление выбросов: {method}, параметры: {decoded_info['pipeline_params']['outlier_params']}")
+    
+    def _decode_resampling(self, chromosome, decoded_info, verbose):
+        """Декодирует гены ресемплинга (6, 7, 8)"""
+        method_idx, hp1_idx, hp2_idx = chromosome[6], chromosome[7], chromosome[8]
+        method = self.config.RESAMPLING_MAP.get(method_idx, "unknown")
+        
+        decoded_info['pipeline_params']['resampling_method'] = method
+        
+        params = {}
+        if method == 'oversample':
+            params['sampling_strategy'] = self._get_hp_value(hp1_idx, self.config.HP_RESAMPLING_ROS_STRATEGY)
+        elif method == 'smote':
+            params['k_neighbors'] = self._get_hp_value(hp1_idx, self.config.HP_RESAMPLING_SMOTE_K_NEIGHBORS)
+            params['sampling_strategy'] = self._get_hp_value(hp2_idx, self.config.HP_RESAMPLING_SMOTE_STRATEGY)
+        elif method == 'adasyn':
+            params['n_neighbors'] = self._get_hp_value(hp1_idx, self.config.HP_RESAMPLING_ADASYN_N_NEIGHBORS)
+            params['sampling_strategy'] = self._get_hp_value(hp2_idx, self.config.HP_RESAMPLING_ADASYN_STRATEGY)
+        
+        decoded_info['pipeline_params']['resampling_params'] = {k: v for k, v in params.items() if v is not None}
+        
+        if verbose:
+            print(f"  Ресемплинг: {method}, параметры: {decoded_info['pipeline_params']['resampling_params']}")
+    
+    def _decode_encoding(self, chromosome, decoded_info, verbose):
+        """Декодирует гены кодирования (9, 10, 11)"""
+        method_idx, hp1_idx, hp2_idx = chromosome[9], chromosome[10], chromosome[11]
+        method = self.config.ENCODING_MAP.get(method_idx, "unknown")
+        
+        decoded_info['pipeline_params']['encoding_method'] = method
+        
+        params = {}
+        if method == 'onehot':
+            params['max_cardinality_threshold'] = self._get_hp_value(hp1_idx, self.config.HP_ENCODING_ONEHOT_MAX_CARDINALITY)
+            params['drop'] = self._get_hp_value(hp2_idx, self.config.HP_ENCODING_ONEHOT_DROP)
+        elif method == 'lsa':
+            params['n_components'] = self._get_hp_value(hp1_idx, self.config.HP_ENCODING_LSA_N_COMPONENTS)
+            ngram_max = self._get_hp_value(hp2_idx, self.config.HP_ENCODING_LSA_NGRAM_MAX)
+            if ngram_max is not None:
+                params['ngram_range'] = (1, ngram_max)
+        elif method == 'word2vec':
+            params['embedding_dim'] = self._get_hp_value(hp1_idx, self.config.HP_ENCODING_W2V_DIM)
+            params['window'] = self._get_hp_value(hp2_idx, self.config.HP_ENCODING_W2V_WINDOW)
+        
+        # Сохраняем параметры (включая None для drop в onehot)
+        filtered_params = {}
+        for k, v in params.items():
+            if v is not None or (method == 'onehot' and k == 'drop'):
+                filtered_params[k] = v
+        
+        decoded_info['pipeline_params']['encoding_params'] = filtered_params
+        
+        if verbose:
+            print(f"  Кодирование: {method}, параметры: {decoded_info['pipeline_params']['encoding_params']}")
+    
+    def _decode_scaling(self, chromosome, decoded_info, verbose):
+        """Декодирует гены масштабирования (12, 13, 14)"""
+        method_idx, hp1_idx, hp2_idx = chromosome[12], chromosome[13], chromosome[14]
+        method = self.config.SCALING_MAP.get(method_idx, "unknown")
+        
+        decoded_info['pipeline_params']['scaling_method'] = method
+        
+        params = {}
+        if method == 'standard':
+            params['with_mean'] = self._get_hp_value(hp1_idx, self.config.HP_SCALING_STANDARD_WITH_MEAN)
+            params['with_std'] = self._get_hp_value(hp2_idx, self.config.HP_SCALING_STANDARD_WITH_STD)
+        
+        decoded_info['pipeline_params']['scaling_params'] = {k: v for k, v in params.items() if v is not None}
+        
+        if verbose:
+            print(f"  Масштабирование: {method}, параметры: {decoded_info['pipeline_params']['scaling_params']}")
+    
+    def _decode_model(self, chromosome, decoded_info, verbose):
+        """Декодирует гены модели (15, 16, 17, 18, 19)"""
+        method_idx = chromosome[15]
+        hp1_idx, hp2_idx, hp3_idx, hp4_idx = chromosome[16], chromosome[17], chromosome[18], chromosome[19]
+        model_type = self.config.MODEL_MAP.get(method_idx, "unknown")
+        
+        decoded_info['pipeline_params']['model_type'] = model_type
+        
+        params = {}
+        if model_type == 'logistic_regression':
+            params['C'] = self._get_hp_value(hp1_idx, self.config.HP_MODEL_LOGREG_C)
+            params['solver_penalty_config'] = self._get_hp_value(hp2_idx, self.config.HP_MODEL_LOGREG_PENALTY_SOLVER)
+            params['class_weight'] = self._get_hp_value(hp3_idx, self.config.HP_MODEL_LOGREG_CLASS_WEIGHT)
+            params['max_iter'] = self._get_hp_value(hp4_idx, self.config.HP_MODEL_LOGREG_MAX_ITER)
+        elif model_type == 'random_forest':
+            params['n_estimators'] = self._get_hp_value(hp1_idx, self.config.HP_MODEL_RF_N_ESTIMATORS)
+            params['max_depth'] = self._get_hp_value(hp2_idx, self.config.HP_MODEL_RF_MAX_DEPTH)
+            params['min_samples_split'] = self._get_hp_value(hp3_idx, self.config.HP_MODEL_RF_MIN_SAMPLES_SPLIT)
+            params['min_samples_leaf'] = self._get_hp_value(hp4_idx, self.config.HP_MODEL_RF_MIN_SAMPLES_LEAF)
+        elif model_type == 'gradient_boosting':
+            params['n_estimators'] = self._get_hp_value(hp1_idx, self.config.HP_MODEL_GB_N_ESTIMATORS)
+            params['learning_rate'] = self._get_hp_value(hp2_idx, self.config.HP_MODEL_GB_LEARNING_RATE)
+            params['max_depth'] = self._get_hp_value(hp3_idx, self.config.HP_MODEL_GB_MAX_DEPTH)
+            params['subsample'] = self._get_hp_value(hp4_idx, self.config.HP_MODEL_GB_SUBSAMPLE)
+        elif model_type == 'neural_network':
+            params['hidden_layer_sizes'] = self._get_hp_value(hp1_idx, self.config.HP_MODEL_NN_LAYERS)
+            params['dropout_rate'] = self._get_hp_value(hp2_idx, self.config.HP_MODEL_NN_DROPOUT)
+            params['learning_rate'] = self._get_hp_value(hp3_idx, self.config.HP_MODEL_NN_LR)
+            params['batch_size'] = self._get_hp_value(hp4_idx, self.config.HP_MODEL_NN_BATCH_SIZE)
+        
+        # Фильтруем параметры, оставляя важные None значения
+        final_params = {}
+        for k, v in params.items():
+            if v is not None:
+                final_params[k] = v
+            elif k in ['class_weight', 'max_depth'] and v is None:
+                final_params[k] = None  # Сохраняем важные None значения
+            elif k == 'solver_penalty_config' and isinstance(v, dict):
+                final_params[k] = v
+        
+        decoded_info['pipeline_params']['model_params'] = final_params
+        
+        if verbose:
+            print(f"  Модель: {model_type}, параметры: {decoded_info['pipeline_params']['model_params']}")
+    
+    def _print_summary(self, decoded_info):
+        """Выводит краткое резюме декодированной хромосомы"""
+        params = decoded_info['pipeline_params']
+        print(f"\n[ChromosomeDecoder] Резюме конфигурации пайплайна:")
+        print(f"  • Импутация: {params['imputation_method']}")
+        print(f"  • Выбросы: {params['outlier_method']}")  
+        print(f"  • Ресемплинг: {params['resampling_method']}")
+        print(f"  • Кодирование: {params['encoding_method']}")
+        print(f"  • Масштабирование: {params['scaling_method']}")
+        print(f"  • Модель: {params['model_type']}")
+
+
+# Глобальный декодер для совместимости
+_chromosome_decoder = ChromosomeDecoder()
+
+def decode_and_log_chromosome(chromosome, verbose=True):
+    """
+    Декодирует хромосому (совместимость с существующим кодом)
+    
+    Args:
+        chromosome: 20-генная хромосома
+        verbose: Выводить детали
+        
+    Returns:
+        Dict с параметрами пайплайна
+    """
+    result = _chromosome_decoder.decode_chromosome(chromosome, verbose)
+    if result is None:
+        return None
+    
+    # Возвращаем только pipeline_params для совместимости со старым кодом
+    return result['pipeline_params']
+
+
+def decode_chromosome_full(chromosome, verbose=True):
+    """
+    Декодирует хромосому с полной информацией (для CLI и новых приложений)
+    
+    Args:
+        chromosome: 20-генная хромосома
+        verbose: Выводить детали
+        
+    Returns:
+        Dict с полной информацией о хромосоме
+    """
+    return _chromosome_decoder.decode_chromosome(chromosome, verbose)
+
+
+# ==========================================
+# EXISTING PIPELINE PROCESSING FUNCTIONS  
+# ==========================================
 
 def get_dataset_name(path):
     """
@@ -63,33 +407,20 @@ def process_data(train_path, test_path, target_column,
     
     dataset_name = get_dataset_name(train_path)
     
-    # Experiment name includes method names only, HPs are too verbose for dir names
     experiment_name_parts = [imputation_method, outlier_method, encoding_method, resampling_method]
     if scaling_method != 'none':
         experiment_name_parts.append(scaling_method)
     experiment_name = "_".join(experiment_name_parts)
     
-    # Path for processed data files (e.g. train_processed.csv)
-    results_path = os.path.join('results', dataset_name, experiment_name)
-    # Path for model-related research artifacts (e.g. learning curves, result summaries)
-    # This path might still be used by ModelTrainer even if directory isn't created here,
-    # if ModelTrainer receives it and decides to create subdirectories itself.
-    # However, not creating it here prevents empty directories if ModelTrainer also doesn't save.
+    results_path = os.path.join('research', dataset_name, experiment_name)
     research_path = os.path.join("research", dataset_name, experiment_name)
     
     if save_processed_data:
         os.makedirs(results_path, exist_ok=True)
     
-    # Only create research_path if model artifacts are to be saved by this pipeline run
     if save_model_artifacts:
         os.makedirs(research_path, exist_ok=True)
-    # If save_model_artifacts is False, research_path is still constructed and passed,
-    # but the directory itself is not created by process_data.
-    # ModelTrainer will then decide if it wants to use this path (and potentially create it).
 
-    # Create a unique suffix for filenames if saving, including HPs would be too long.
-    # The GA evaluation will rely on directory structure + logs for HP tracking.
-    # For non-GA runs (save_processed_data=True), the path itself is a good identifier.
     output_suffix = f"_processed_{experiment_name}"
 
     print(f"\n[Pipeline Stage - Config: {experiment_name}] Loading data...")
@@ -151,7 +482,6 @@ def process_data(train_path, test_path, target_column,
     duplicated_cols_before_encoding = train_data.columns[train_data.columns.duplicated()].tolist()
     if duplicated_cols_before_encoding:
         print(f"WARNING: Duplicate columns found in train_data BEFORE encoding: {duplicated_cols_before_encoding}")
-        # Aggressively remove duplicates, keeping the first occurrence
         train_data = train_data.loc[:, ~train_data.columns.duplicated(keep='first')]
         print(f"         Duplicates removed. Columns now: {train_data.columns.tolist()}")
     if test_data is not None and not test_data.empty:
@@ -163,10 +493,6 @@ def process_data(train_path, test_path, target_column,
     # --- End Diagnostic ---
 
     print(f"[Pipeline Stage - Config: {experiment_name}] Encoding ({encoding_method}, HPs: {encoding_params})...")
-    # Print column list right before encoding for detailed check
-    # print(f"DEBUG: train_data columns before preprocessor.encode: {train_data.columns.tolist()}")
-    # if test_data is not None and not test_data.empty:
-    # print(f"DEBUG: test_data columns before preprocessor.encode: {test_data.columns.tolist()}")
 
     train_data = preprocessor.encode(train_data, method=encoding_method, target_col=target_column, **encoding_params)
     if test_data is not None and not test_data.empty:
@@ -183,7 +509,6 @@ def process_data(train_path, test_path, target_column,
             X_train_encoded = train_data.drop(columns=[target_column])
             y_train_encoded = train_data[target_column]
             
-            # Pass HPs to Resampler constructor or method
             resampler = Resampler(method=resampling_method, **resampling_params)
             X_train_resampled, y_train_resampled = resampler.fit_resample(X_train_encoded, y_train_encoded)
             
@@ -196,6 +521,7 @@ def process_data(train_path, test_path, target_column,
     print(f"[Pipeline Stage - Config: {experiment_name}] Resampling completed.")
 
     print(f"[Pipeline Stage - Config: {experiment_name}] Scaling ({scaling_method}, HPs: {scaling_params})...")
+    scaler_instance = None  # Инициализируем переменную скейлера для дальнейшего сохранения
     if scaling_method != 'none' and scaling_method in ['standard', 'minmax']:
         if target_column not in train_data.columns:
             print(f"CRITICAL WARNING: Target column '{target_column}' not found in train_data before scaling. Skipping scaling.")
@@ -203,11 +529,10 @@ def process_data(train_path, test_path, target_column,
             X_train_features = train_data.drop(columns=[target_column])
             y_train_target = train_data[target_column]
 
-            scaler_instance = None
             if scaling_method == 'standard':
-                scaler_instance = StandardScaler(**scaling_params) # Pass HPs
+                scaler_instance = StandardScaler(**scaling_params)
             elif scaling_method == 'minmax':
-                scaler_instance = MinMaxScaler(**scaling_params) # Pass HPs (though minmax has few common HPs)
+                scaler_instance = MinMaxScaler(**scaling_params)
 
             if scaler_instance:
                 try:
@@ -251,6 +576,26 @@ def process_data(train_path, test_path, target_column,
         print(f"Warning: Unknown scaling method '{scaling_method}'. Scaling skipped.")
     print(f"[Pipeline Stage - Config: {experiment_name}] Scaling completed.")
     
+    # Собираем состояния всех препроцессоров для полной сериализации пайплайна
+    preprocessor_states = {
+        'preprocessor': preprocessor.get_preprocessor_state(),
+        'scaler': scaler_instance,
+        'scaler_method': scaling_method,
+        'dropped_columns': potential_id_columns_process,  # Сохраняем информацию об удаленных колонках
+        'processing_config': {
+            'imputation_method': imputation_method,
+            'imputation_params': imputation_params,
+            'outlier_method': outlier_method,
+            'outlier_params': outlier_params,
+            'encoding_method': encoding_method,
+            'encoding_params': encoding_params,
+            'resampling_method': resampling_method,
+            'resampling_params': resampling_params,
+            'scaling_method': scaling_method,
+            'scaling_params': scaling_params
+        }
+    }
+    
     train_data_path_out = None
     test_data_path_out = None
 
@@ -264,15 +609,62 @@ def process_data(train_path, test_path, target_column,
         else:
             test_data_path_out = None 
         print(f"[Pipeline Stage - Config: {experiment_name}] Data processing complete. Processed files saved to: {results_path}")
-        return train_data_path_out, test_data_path_out, research_path # Return paths
+        return train_data_path_out, test_data_path_out, research_path, preprocessor_states # Return paths + states
     else:
         print(f"[Pipeline Stage - Config: {experiment_name}] Data processing complete. Processed data NOT saved (GA mode).")
-        return train_data, test_data, research_path # Return DataFrames
+        return train_data, test_data, research_path, preprocessor_states # Return DataFrames + states
 
-    # analyze_target_correlations was commented out, so not re-adding here for now.
+def train_model(train_data_input, test_data_input, target_column, research_path, 
+                model_type='random_forest', model_hyperparameters=None, 
+                plot_learning_curves=True, save_run_results=True):
+    """
+    Trains a model using the specified data and parameters.
+    Handles data splitting if test data is missing a target.
+    """
+    # print(f"\n--- Training Model: {model_type} ---")
+    # print(f"Target column: {target_column}")
+    # print(f"Research path for this run: {research_path}")
+    if model_hyperparameters:
+        # print(f"Model hyperparameters received: {model_hyperparameters}")
+        pass
+
+    if (save_run_results or plot_learning_curves) and research_path:
+        os.makedirs(research_path, exist_ok=True)
     
-    # Return DataFrames directly if not saving, otherwise paths
-    if not save_processed_data:
-        return train_data, test_data, research_path
-    else:
-        return train_data_path_out, test_data_path_out, research_path 
+    # Load data if paths are provided
+    current_train_data = train_data_input
+    if isinstance(train_data_input, str):
+        try:
+            current_train_data = pd.read_csv(train_data_input)
+            # print(f"Loaded training data from path: {train_data_input}")
+        except Exception as e:
+            print(f"Error loading training data from path {train_data_input}: {e}")
+            return None, None, None # Cannot proceed without training data
+    
+    current_test_data = test_data_input
+    if isinstance(test_data_input, str):
+        try:
+            current_test_data = pd.read_csv(test_data_input)
+            # print(f"Loaded test data from path: {test_data_input}")
+        except FileNotFoundError:
+            # print(f"Test data file not found at {test_data_input}. Proceeding without test data (will use validation split from train).")
+            current_test_data = pd.DataFrame() # Ensure it's an empty DF, not None
+        except Exception as e:
+            print(f"Error loading test data from path {test_data_input}: {e}")
+            current_test_data = pd.DataFrame() 
+    elif current_test_data is None: # If None was passed directly (not a path)
+        current_test_data = pd.DataFrame()
+
+
+    # Create ModelTrainer instance
+    trainer = ModelTrainer(model_type=model_type, model_hyperparameters=model_hyperparameters, random_state=42)
+    
+    metrics, feature_importance, trainer_dropped_cols = trainer.train(
+        current_train_data, 
+        current_test_data, 
+        target_column,
+        output_path=research_path, 
+        plot_learning_curves=plot_learning_curves,
+        save_run_results=save_run_results # Pass the flag through
+    )    
+    return metrics, feature_importance, trainer_dropped_cols

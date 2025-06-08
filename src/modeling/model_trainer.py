@@ -1,7 +1,7 @@
 import tensorflow as tf # Ensure TensorFlow is imported early
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report, accuracy_score, f1_score, average_precision_score, roc_auc_score, precision_recall_curve, auc
+from sklearn.metrics import classification_report, accuracy_score, f1_score, average_precision_score, roc_auc_score, precision_recall_curve, auc, precision_score, recall_score
 from sklearn.preprocessing import LabelBinarizer, LabelEncoder
 from sklearn.linear_model import LogisticRegression
 import pandas as pd
@@ -17,32 +17,19 @@ from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.regularizers import l1_l2
 
 class ModelTrainer:
-    """
-    Class for training and evaluating machine learning models.
-    """
+    
     def __init__(self, model_type='random_forest', model_hyperparameters=None, random_state=42, validation_size=0.2):
-        """
-        Initialize ModelTrainer.
-        
-        Args:
-            model_type: str, type of model to use ('random_forest', 'logistic_regression', 'gradient_boosting', 'neural_network')
-            random_state: int, random state for reproducibility
-            validation_size: float, size of validation split when test has no target
-        """
         self.model_type = model_type
         self.random_state = random_state
         self.validation_size = validation_size
         self.model = None
-        self.history = None # For Keras model training history
+        self.history = None
         self.model_hyperparameters = model_hyperparameters if model_hyperparameters is not None else {}
-        # print(f"ModelTrainer initialized for {self.model_type} with HPs: {self.model_hyperparameters}")
         
-        # Set random seed for TensorFlow/Keras for reproducibility if using it
         if 'tensorflow' in globals() and self.model_type == 'neural_network':
             globals()['tensorflow'].random.set_seed(self.random_state)
         
     def plot_learning_curves(self, X, y, output_path):
-        # This method is for scikit-learn models
         train_sizes, train_scores, test_scores = learning_curve(
             self.model, X, y,
             cv=5,
@@ -73,7 +60,7 @@ class ModelTrainer:
         plt.close()
         
         return {
-            'train_sizes': train_sizes.tolist(), # Convert to list for JSON serialization
+            'train_sizes': train_sizes.tolist(),
             'train_scores': {
                 'mean': train_mean.tolist(),
                 'std': train_std.tolist()
@@ -143,7 +130,7 @@ class ModelTrainer:
     def train(self, train_data, test_data, target_column, output_path=None, plot_learning_curves=True, save_run_results=True): # Added save_run_results
         if train_data is None or train_data.empty:
             print("Error: Training data is None or empty. Aborting training.")
-            return None, None
+            return None, None, None
 
         _train_data = train_data.copy()
         _test_data = test_data.copy() if test_data is not None else pd.DataFrame()
@@ -249,30 +236,27 @@ class ModelTrainer:
         elif self.model_type == 'logistic_regression':
             solver_penalty_config = hps.pop('solver_penalty_config', None)
             if solver_penalty_config and isinstance(solver_penalty_config, dict):
-                hps.update(solver_penalty_config) # Add solver and penalty from the dict
+                hps.update(solver_penalty_config) 
 
-            # Default solver if not provided by HPs or config
             current_solver = hps.get('solver', 'lbfgs') 
             current_penalty = hps.get('penalty')
 
-            # Adjust solver if incompatible with penalty
             compatible_solvers = {
                 'l1': ['liblinear', 'saga'],
                 'l2': ['lbfgs', 'liblinear', 'newton-cg', 'newton-cholesky', 'sag', 'saga'],
                 'elasticnet': ['saga'],
-                None: ['lbfgs', 'newton-cg', 'newton-cholesky', 'sag', 'saga'] # For penalty=None
+                None: ['lbfgs', 'newton-cg', 'newton-cholesky', 'sag', 'saga'] 
             }
             
-            # Ensure penalty is a string or None for dictionary lookup
             penalty_key = current_penalty if isinstance(current_penalty, str) else None
 
 
             if penalty_key is not None and penalty_key in compatible_solvers:
                 if current_solver not in compatible_solvers[penalty_key]:
-                    new_solver = compatible_solvers[penalty_key][0] # Pick the first compatible
+                    new_solver = compatible_solvers[penalty_key][0] 
                     print(f"Warning: Solver '{current_solver}' for Logistic Regression is not compatible with penalty '{current_penalty}'. Changing solver to '{new_solver}'.")
                     hps['solver'] = new_solver
-            elif penalty_key is None and 'penalty' in hps : # Handles penalty=None explicitly if set
+            elif penalty_key is None and 'penalty' in hps : 
                  if current_solver not in compatible_solvers[None]:
                     new_solver = compatible_solvers[None][0]
                     print(f"Warning: Solver '{current_solver}' for Logistic Regression is not compatible with no penalty. Changing solver to '{new_solver}'.")
@@ -280,9 +264,9 @@ class ModelTrainer:
 
 
             if 'l1_ratio' in hps and hps.get('penalty') != 'elasticnet':
-                hps.pop('l1_ratio') # Remove l1_ratio if not using elasticnet
+                hps.pop('l1_ratio') 
             if hps.get('penalty') == 'elasticnet' and 'l1_ratio' not in hps:
-                 hps['l1_ratio'] = 0.5 # Default l1_ratio for elasticnet if not specified
+                 hps['l1_ratio'] = 0.5 
 
             self.model = LogisticRegression(random_state=self.random_state, **hps)
 
@@ -293,22 +277,18 @@ class ModelTrainer:
             input_shape = (X_train.shape[1],)
             num_classes = y_train.nunique()
 
-            # Keras specific HPs
             epochs = hps.get('epochs', 50)
             batch_size = hps.get('batch_size', 32)
             early_stopping_patience = hps.get('early_stopping_patience', 5)
             
-            # Remove these from hps before passing to _build_keras_model if they are not direct layer/optimizer params
             keras_train_hps_keys = ['epochs', 'batch_size', 'early_stopping_patience']
             build_hps = {k: v for k, v in hps.items() if k not in keras_train_hps_keys}
 
             self.model = self._build_keras_model(input_shape, num_classes, **build_hps)
             
-            # Ensure y_train and y_test are 1D arrays for Keras
             y_train_keras = y_train.values.ravel()
             y_test_keras = y_test.values.ravel()
 
-            # Convert to categorical if multi-class
             if num_classes > 2:
                 y_train_keras = to_categorical(y_train_keras, num_classes=num_classes)
                 y_test_keras = to_categorical(y_test_keras, num_classes=num_classes)
@@ -325,7 +305,7 @@ class ModelTrainer:
                 batch_size=batch_size,
                 validation_data=(X_test, y_test_keras),
                 callbacks=callbacks_list,
-                verbose=0 # 0 for silent, 1 for progress bar, 2 for one line per epoch.
+                verbose=0 
             )
             if plot_learning_curves and output_path:
                 self._plot_keras_learning_curves(output_path)
@@ -336,7 +316,7 @@ class ModelTrainer:
             print(f"Training {self.model_type}...")
             self.model.fit(X_train, y_train)
             if plot_learning_curves and output_path :
-                 os.makedirs(output_path, exist_ok=True) # Ensure path exists
+                 os.makedirs(output_path, exist_ok=True) 
                  self.plot_learning_curves(X_train, y_train, output_path)
 
 
@@ -348,127 +328,95 @@ class ModelTrainer:
             y_pred = self.model.predict(X_test)
             y_pred_proba = self.model.predict_proba(X_test) if hasattr(self.model, "predict_proba") else None
 
-            # For Keras, y_pred might be probabilities if final layer is softmax and loss is categorical_crossentropy
-            # or it could be class labels if using argmax internally after predict.
-            # We need class labels for classification_report.
+
             if self.model_type == 'neural_network':
-                if y_pred.ndim > 1 and y_pred.shape[1] > 1: # Probabilities for multi-class
+                if y_pred.ndim > 1 and y_pred.shape[1] > 1: 
                     y_pred = np.argmax(y_pred, axis=1)
-                # If binary and y_pred are probabilities (e.g. shape (N,1) or (N,2) with sigmoid/softmax)
-                # convert to class labels 0 or 1.
-                elif y_pred.ndim == 1 or y_pred.shape[1] == 1: # Binary probabilities
+                elif y_pred.ndim == 1 or y_pred.shape[1] == 1: 
                     y_pred = (y_pred > 0.5).astype(int)
-                
-                # y_pred_proba for Keras might be the raw output of the network.
-                # If num_classes == 2 and y_pred_proba has shape (N,1), use it for positive class.
-                # If num_classes > 2, it should already be (N, num_classes).
-                # If num_classes == 2 and y_pred_proba has shape (N,2), use proba of positive class.
-                if hasattr(self.model, 'predict'): # Keras model's predict often gives probabilities directly
+
+                if hasattr(self.model, 'predict'): 
                     keras_probas = self.model.predict(X_test)
-                    if y_train.nunique() == 2: # Binary case
+                    if y_train.nunique() == 2: 
                         if keras_probas.ndim > 1 and keras_probas.shape[1] == 2:
-                            y_pred_proba = keras_probas[:, 1] # Probability of positive class
-                        elif keras_probas.ndim == 1 or keras_probas.shape[1] == 1: # Already (N,) or (N,1)
+                            y_pred_proba = keras_probas[:, 1] 
+                        elif keras_probas.ndim == 1 or keras_probas.shape[1] == 1: 
                              y_pred_proba = keras_probas.ravel()
-                        # else: y_pred_proba might already be set from a more general predict_proba call
-                    else: # Multi-class, Keras predict gives (N, num_classes)
+                    else: 
                         y_pred_proba = keras_probas
 
 
+            # Базовые метрики
             metrics['accuracy'] = accuracy_score(y_test, y_pred)
+            
+            # F1-Score в различных вариантах
+            if y_train.nunique() == 2:
+                # Для бинарной классификации - основной F1
+                metrics['f1_score'] = f1_score(y_test, y_pred, zero_division=0)
+            else:
+                # Для мультиклассовой - macro как основной
+                metrics['f1_score'] = f1_score(y_test, y_pred, average='macro', zero_division=0)
+            
             metrics['f1_score_weighted'] = f1_score(y_test, y_pred, average='weighted', zero_division=0)
             metrics['f1_score_micro'] = f1_score(y_test, y_pred, average='micro', zero_division=0)
             metrics['f1_score_macro'] = f1_score(y_test, y_pred, average='macro', zero_division=0)
             
-            num_unique_classes = y_train.nunique() # This will be 2 for binary classification
-
-            if y_pred_proba is not None:
-                if num_unique_classes == 2: # Binary classification
-                    # Ensure y_pred_proba for binary is 1D array of positive class probabilities
-                    if y_pred_proba.ndim == 2:
-                        if y_pred_proba.shape[1] == 2:
-                            y_pred_proba_binary = y_pred_proba[:, 1]
-                        elif y_pred_proba.shape[1] == 1: # Should ideally not happen if positive class proba is extracted
-                            y_pred_proba_binary = y_pred_proba.ravel()
-                        else: # Should not happen for binary if model is correct
-                            print(f"Warning: y_pred_proba has unexpected shape {y_pred_proba.shape} for binary classification. Using as is for AUPRC/ROC AUC.")
-                            # This case might be problematic, but we let roc_auc_score try
-                            y_pred_proba_binary = y_pred_proba 
-                    else: # Assumed to be already 1D
-                        y_pred_proba_binary = y_pred_proba
-
-                    try:
-                        metrics['roc_auc'] = roc_auc_score(y_test, y_pred_proba_binary)
-                        precision, recall, _ = precision_recall_curve(y_test, y_pred_proba_binary)
-                        metrics['auprc'] = auc(recall, precision)
-                    except ValueError as e_metrics: # Handles cases like only one class present in y_test or other issues
-                        print(f"Could not compute ROC AUC or AUPRC for binary case: {e_metrics}")
-                        metrics['roc_auc'] = None
-                        metrics['auprc'] = None
-                
-                else: # Multi-class classification
-                    try:
-                        # For multi-class, y_pred_proba should have shape (n_samples, n_classes)
-                        metrics['roc_auc'] = roc_auc_score(y_test, y_pred_proba, multi_class='ovr', average='weighted')
-                        
-                        # For AUPRC (average precision) in multi-class:
-                        # Binarize y_test
-                        lb = LabelBinarizer()
-                        y_test_binarized = lb.fit_transform(y_test)
-                        
-                        # If y_test_binarized is a 1D array after binarization (e.g. only 2 classes that were not 0 and 1)
-                        # It means the original classes were not [0, 1, ..., n_classes-1]
-                        # We need to ensure y_test_binarized matches dimensions of y_pred_proba for average_precision_score
-                        if y_test_binarized.shape[1] == 1 and y_pred_proba.shape[1] > 1 and num_unique_classes > 2 :
-                             # This can happen if LabelBinarizer squeezes output for 2 classes that are not 0,1
-                             # but it's a multi-class problem by num_unique_classes.
-                             # Re-binarize with explicit classes if this becomes an issue.
-                             # For now, we trust num_unique_classes from y_train for the overall problem type.
-                             # A common case is if classes are e.g. [1, 2, 3], LB might make it 2 columns.
-                             # We need to ensure y_test_binarized has n_classes columns.
-                             # Re-creating with explicit classes to ensure correct shape if num_unique_classes > 2
-                             encoder = LabelEncoder()
-                             # Fit on y_train to get all possible classes
-                             all_classes = encoder.fit(y_train).classes_ 
-                             y_test_for_binarize = encoder.transform(y_test) # Ensure y_test labels are 0 to k-1
-
-                             lb_mc = LabelBinarizer()
-                             lb_mc.fit(y_test_for_binarize) # Fit on transformed labels
-                             y_test_binarized_mc = lb_mc.transform(y_test_for_binarize)
-
-                             # Handle case where LabelBinarizer creates only one column for two classes
-                             if num_unique_classes == 2 and y_test_binarized_mc.shape[1] == 1 and y_pred_proba.shape[1] == 2:
-                                 # This is essentially a binary case handled by the previous block,
-                                 # but if it falls here, we should use the positive class probabilities.
-                                 # This should ideally not be hit if the num_unique_classes == 2 path is taken.
-                                 metrics['auprc'] = average_precision_score(y_test, y_pred_proba[:, 1], average='weighted')
-                             elif y_test_binarized_mc.shape[1] != y_pred_proba.shape[1] and num_unique_classes > 1 :
-                                 # If after explicit binarization, shapes still mismatch (and not binary case)
-                                 # this implies an issue. Fallback or log error.
-                                 print(f"Warning: Shape mismatch for multi-class AUPRC. y_test_binarized shape: {y_test_binarized_mc.shape}, y_pred_proba shape: {y_pred_proba.shape}. AUPRC might be incorrect.")
-                                 metrics['auprc'] = None # Or some default error value
-                             else:
-                                 metrics['auprc'] = average_precision_score(y_test_binarized_mc, y_pred_proba, average='weighted')
-
-                        elif y_test_binarized.shape[1] != y_pred_proba.shape[1] and num_unique_classes > 1 : # General case mismatch
-                             print(f"Warning: Shape mismatch for multi-class AUPRC (initial binarization). y_test_binarized shape: {y_test_binarized.shape}, y_pred_proba shape: {y_pred_proba.shape}. AUPRC might be incorrect.")
-                             metrics['auprc'] = None
-                        else: # Shapes match or it's a single column binary case handled by LabelBinarizer
-                             metrics['auprc'] = average_precision_score(y_test_binarized, y_pred_proba, average="weighted")
-
-                    except ValueError as e_metrics:
-                        print(f"Could not compute ROC AUC or AUPRC for multi-class case: {e_metrics}")
-                        metrics['roc_auc'] = None
-                        metrics['auprc'] = None
+            # Precision и Recall
+            if y_train.nunique() == 2:
+                metrics['precision'] = precision_score(y_test, y_pred, zero_division=0)
+                metrics['recall'] = recall_score(y_test, y_pred, zero_division=0)
             else:
+                metrics['precision'] = precision_score(y_test, y_pred, average='macro', zero_division=0)
+                metrics['recall'] = recall_score(y_test, y_pred, average='macro', zero_division=0)
+            
+            num_unique_classes = y_train.nunique() 
+
+            # ROC-AUC и AUPRC
+            if y_pred_proba is not None:
+                try:
+                    if num_unique_classes == 2: 
+                        # Бинарная классификация
+                        if y_pred_proba.ndim == 2 and y_pred_proba.shape[1] == 2:
+                            y_proba_pos = y_pred_proba[:, 1]
+                        elif y_pred_proba.ndim == 2 and y_pred_proba.shape[1] == 1:
+                            y_proba_pos = y_pred_proba.ravel()
+                        else:
+                            y_proba_pos = y_pred_proba.ravel() if y_pred_proba.ndim > 1 else y_pred_proba
+
+                        metrics['roc_auc'] = roc_auc_score(y_test, y_proba_pos)
+                        metrics['auprc'] = average_precision_score(y_test, y_proba_pos)
+                        
+                    else: 
+                        # Мультиклассовая классификация
+                        metrics['roc_auc'] = roc_auc_score(y_test, y_pred_proba, multi_class='ovr', average='macro')
+                        
+                        # Для AUPRC в мультиклассе используем macro-averaging
+                        try:
+                            lb = LabelBinarizer()
+                            y_test_bin = lb.fit_transform(y_test)
+                            if y_test_bin.shape[1] == 1:  # Если только 2 класса в тестовых данных
+                                y_test_bin = np.column_stack([1 - y_test_bin, y_test_bin])
+                            
+                            if y_test_bin.shape[1] == y_pred_proba.shape[1]:
+                                metrics['auprc'] = average_precision_score(y_test_bin, y_pred_proba, average='macro')
+                            else:
+                                print(f"Warning: Shape mismatch for AUPRC - using weighted average instead")
+                                metrics['auprc'] = average_precision_score(y_test, y_pred_proba, average='weighted', multi_class='ovr')
+                        except Exception as e_auprc:
+                            print(f"Could not compute AUPRC for multi-class: {e_auprc}")
+                            metrics['auprc'] = None
+
+                except Exception as e_metrics: 
+                    print(f"Could not compute ROC AUC or AUPRC: {e_metrics}")
+                    metrics['roc_auc'] = None
+                    metrics['auprc'] = None
+            else:
+                print("Warning: No probability predictions available - ROC AUC and AUPRC will be None")
                 metrics['roc_auc'] = None
                 metrics['auprc'] = None
 
             report_dict = classification_report(y_test, y_pred, output_dict=True, zero_division=0)
             metrics['classification_report'] = report_dict
-            # print(f"Metrics for {self.model_type} on {eval_set_description}:")
-            # for k, v in metrics.items():
-            #     if k != 'classification_report': print(f"  {k}: {v}")
 
         if hasattr(self.model, 'feature_importances_'):
             feature_importance_df = pd.DataFrame({
@@ -476,20 +424,18 @@ class ModelTrainer:
             'importance': self.model.feature_importances_
             }).sort_values(by='importance', ascending=False)
         elif hasattr(self.model, 'coef_') and self.model_type == 'logistic_regression':
-            # For logistic regression, coef_ might be (1, n_features) for binary or (n_classes, n_features) for multi-class
-            if self.model.coef_.ndim == 1 : # Should not happen with current sklearn
+            if self.model.coef_.ndim == 1 : 
                  coefs = self.model.coef_
-            elif self.model.coef_.shape[0] == 1: # Binary classification
+            elif self.model.coef_.shape[0] == 1: 
                 coefs = self.model.coef_[0]
-            else: # Multi-class, take the average of absolute coefficients across classes as a simple measure
+            else: 
                 coefs = np.mean(np.abs(self.model.coef_), axis=0)
             
             feature_importance_df = pd.DataFrame({
                 'feature': X_train_cols_final,
-                'importance': coefs # For LogReg, these are coefficients
-            }).sort_values(by='importance', key=abs, ascending=False) # Sort by absolute value of coefs
+                'importance': coefs 
+            }).sort_values(by='importance', key=abs, ascending=False) 
         
-        # Save results if path is provided and flag is True
         if output_path and save_run_results:
             os.makedirs(output_path, exist_ok=True)
             results_summary_path = os.path.join(output_path, f'{self.model_type}_results_summary.txt')
@@ -501,23 +447,21 @@ class ModelTrainer:
                 for key, value in metrics.items():
                     if key == 'classification_report':
                         f.write(f"  {key}:\n")
-                        # Nicely format the dict report
                         for class_label, class_metrics in value.items():
                             if isinstance(class_metrics, dict):
                                 f.write(f"    {class_label}:\n")
                                 for metric_name, metric_value in class_metrics.items():
                                     f.write(f"      {metric_name}: {metric_value:.4f}\n")
-                            else: # e.g. accuracy, macro avg, weighted avg
-                                f.write(f"    {class_label}: {value[class_label]:.4f}\n") # Ensure formatting for top-level report items
+                            else: 
+                                f.write(f"    {class_label}: {value[class_label]:.4f}\n") 
                     else:
-                        f.write(f"  {key}: {value}\n") # General metrics
+                        f.write(f"  {key}: {value}\n") 
                 
                 if feature_importance_df is not None:
                     f.write("\nFeature Importances:\n")
                     f.write(feature_importance_df.to_string())
-            # print(f"Results summary saved to {results_summary_path}")
 
-        return metrics, feature_importance_df
+        return metrics, feature_importance_df, potential_id_cols
         
     def predict(self, X):
         """
@@ -529,11 +473,6 @@ class ModelTrainer:
         """
         if self.model is None:
             raise ValueError("Model has not been trained yet.")
-        
-        # Ensure X has the same columns as training data, in the same order
-        # This is a simplified check; more robust handling might involve storing X_train_cols
-        # during training and reordering/adding missing columns in X.
-        # For now, we assume X is correctly preprocessed.
         
         return self.model.predict(X)
 
@@ -584,54 +523,3 @@ class ModelTrainer:
         
         model.compile(optimizer=optimizer, loss=loss_function, metrics=metrics_to_compile)
         return model
-
-# --- End of ModelTrainer class ---
-
-# Example usage (commented out, for testing or direct script execution)
-# if __name__ == '__main__':
-#     # Create dummy data for testing
-#     from sklearn.datasets import make_classification
-#     X_dummy, y_dummy = make_classification(n_samples=200, n_features=20, n_informative=15, 
-#                                            n_redundant=5, random_state=42, n_classes=2) # Binary
-#     # X_dummy, y_dummy = make_classification(n_samples=200, n_features=20, n_informative=15, 
-#     #                                        n_redundant=5, random_state=42, n_classes=3, n_clusters_per_class=1) # Multiclass
-
-#     dummy_df = pd.DataFrame(X_dummy, columns=[f'feature_{i}' for i in range(X_dummy.shape[1])])
-#     dummy_df['target'] = y_dummy
-
-#     train_df, test_df = train_test_split(dummy_df, test_size=0.25, random_state=42, stratify=dummy_df['target'])
-    
-#     output_dir = "research/dummy_dataset/model_tests"
-#     os.makedirs(output_dir, exist_ok=True)
-
-#     # Test Scikit-learn models
-#     # trainer_rf = ModelTrainer(model_type='random_forest', model_hyperparameters={'n_estimators': 50, 'max_depth': 5})
-#     # print("\n--- Training Random Forest ---")
-#     # metrics_rf, fi_rf = trainer_rf.train(train_df, test_df, 'target', output_path=os.path.join(output_dir, 'rf'), plot_learning_curves=True)
-#     # if metrics_rf: print("Random Forest Metrics:", metrics_rf['accuracy'], metrics_rf.get('auprc'))
-#     # if fi_rf is not None: print("Random Forest FI:\n", fi_rf.head())
-
-#     # trainer_lr = ModelTrainer(model_type='logistic_regression', model_hyperparameters={'C': 0.1, 'solver_penalty_config': {'penalty': 'l1', 'solver': 'liblinear'}})
-#     # print("\n--- Training Logistic Regression ---")
-#     # metrics_lr, fi_lr = trainer_lr.train(train_df, test_df, 'target', output_path=os.path.join(output_dir, 'lr'), plot_learning_curves=True)
-#     # if metrics_lr: print("Logistic Regression Metrics:", metrics_lr['accuracy'], metrics_lr.get('auprc'))
-#     # if fi_lr is not None: print("Logistic Regression Coefs:\n", fi_lr.head())
-
-#     # Test Neural Network
-#     nn_hps = {
-#         'hidden_layer_sizes': (32, 16), 
-#         'dropout_rate': 0.1, 
-#         'learning_rate': 0.005,
-#         'epochs': 10, # Keep epochs low for quick test
-#         'batch_size': 16,
-#         'early_stopping_patience': 3,
-#         'l1_reg': 0.001,
-#         'l2_reg': 0.001
-#     }
-#     trainer_nn = ModelTrainer(model_type='neural_network', model_hyperparameters=nn_hps)
-#     print("\n--- Training Neural Network ---")
-#     metrics_nn, fi_nn = trainer_nn.train(train_df, test_df, 'target', output_path=os.path.join(output_dir, 'nn'), plot_learning_curves=True)
-#     if metrics_nn: print(f"Neural Network Metrics (from {metrics_nn.get('evaluation_set_description')}): Accuracy={metrics_nn.get('accuracy')}, AUPRC={metrics_nn.get('auprc')}")
-#     # NN doesn't have simple feature importance like tree models or linear models
-#     if fi_nn is not None: print("Neural Network FI not applicable directly.")
-#     else: print("Neural Network FI not applicable directly.")

@@ -1,39 +1,111 @@
 import os
 import numpy as np
-import pandas as pd # May be needed for type hints or direct use in future GA operators
-import matplotlib.pyplot as plt # Added for plotting
+import pandas as pd 
+import matplotlib.pyplot as plt 
 
-# Imports from other project modules
-from pipeline_processor import process_data, get_dataset_name # Corrected import
-from main import (
-    train_model, decode_and_log_chromosome, 
-    IMPUTATION_MAP, OUTLIER_MAP, RESAMPLING_MAP, ENCODING_MAP, SCALING_MAP, MODEL_MAP,
-    # Import all HP maps needed for GENE_CHOICES_COUNT
-    HP_IMPUTATION_KNN_N_NEIGHBORS, HP_IMPUTATION_MISSFOREST_N_ESTIMATORS, HP_IMPUTATION_MISSFOREST_MAX_ITER,
-    HP_OUTLIER_IF_N_ESTIMATORS, HP_OUTLIER_IF_CONTAMINATION, HP_OUTLIER_IQR_MULTIPLIER,
-    HP_RESAMPLING_ROS_STRATEGY, HP_RESAMPLING_SMOTE_K_NEIGHBORS, HP_RESAMPLING_SMOTE_STRATEGY,
-    HP_RESAMPLING_ADASYN_N_NEIGHBORS, HP_RESAMPLING_ADASYN_STRATEGY,
-    HP_ENCODING_ONEHOT_MAX_CARDINALITY, HP_ENCODING_ONEHOT_DROP, HP_ENCODING_LSA_N_COMPONENTS,
-    HP_ENCODING_LSA_NGRAM_MAX, HP_ENCODING_W2V_DIM, HP_ENCODING_W2V_WINDOW,
-    HP_SCALING_STANDARD_WITH_MEAN, HP_SCALING_STANDARD_WITH_STD,
-    HP_MODEL_LOGREG_C, HP_MODEL_LOGREG_PENALTY_SOLVER, HP_MODEL_LOGREG_CLASS_WEIGHT, HP_MODEL_LOGREG_MAX_ITER,
-    HP_MODEL_RF_N_ESTIMATORS, HP_MODEL_RF_MAX_DEPTH, HP_MODEL_RF_MIN_SAMPLES_SPLIT, HP_MODEL_RF_MIN_SAMPLES_LEAF,
-    HP_MODEL_GB_N_ESTIMATORS, HP_MODEL_GB_LEARNING_RATE, HP_MODEL_GB_MAX_DEPTH, HP_MODEL_GB_SUBSAMPLE,
-    HP_MODEL_NN_LAYERS, HP_MODEL_NN_DROPOUT, HP_MODEL_NN_LR, HP_MODEL_NN_BATCH_SIZE
+from pipeline_processor import (
+    process_data, get_dataset_name, decode_and_log_chromosome,
+    ChromosomeConfig, train_model
 )
 
-# --- GA Parameters ---
-POPULATION_SIZE = 15  # Should be ideally larger for GA, e.g., 20-50
-NUM_GENERATIONS = 10 # Should be ideally larger for GA, e.g., 20-100
-ELITISM_PERCENT = 0.25  # Percentage of population to carry over as elite (25%)
-MUTATION_RATE = 0.1     # Probability of a gene mutating
-TOURNAMENT_SIZE = 3     # Size of the tournament for parent selection
+class GAConfig:
+    def __init__(self, 
+                 train_path=None,
+                 test_path=None,
+                 target_column=None,
+                 population_size=10,
+                 num_generations=8,
+                 elitism_percent=0.25,
+                 mutation_rate=0.1,
+                 tournament_size=3,
+                 generate_learning_curves=False):
+        
+        if train_path is None:
+            raise ValueError("train_path is required")
+        if target_column is None:
+            raise ValueError("target_column is required")
+        
+        self.train_path = train_path
+        self.test_path = test_path
+        self.target_column = target_column
+        
+        self.population_size = population_size
+        self.num_generations = num_generations
+        self.elitism_percent = elitism_percent
+        self.mutation_rate = mutation_rate
+        self.tournament_size = tournament_size
+        self.generate_learning_curves = generate_learning_curves
+        
+        self.max_generations = num_generations
+    
+    def __str__(self):
+        return (f"GAConfig(train_path='{self.train_path}', "
+                f"target_column='{self.target_column}', "
+                f"population_size={self.population_size}, "
+                f"num_generations={self.num_generations})")
 
-# --- Gene Information for Initialization (19 Genes Total) ---
-# [ImpMethod, ImpHP1, ImpHP2, OutMethod, OutHP1, OutHP2, ResMethod, ResHP1, ResHP2, 
-#  EncMethod, EncHP1, EncHP2, ScaMethod, ScaHP1, ScaHP2, ModelMethod, ModHP1, ModHP2, ModHP3]
-# Updated to 20 Genes Total:
-# [..., ModelMethod, ModHP1, ModHP2, ModHP3, ModHP4]
+config = ChromosomeConfig()
+
+IMPUTATION_MAP = config.IMPUTATION_MAP
+OUTLIER_MAP = config.OUTLIER_MAP
+RESAMPLING_MAP = config.RESAMPLING_MAP
+ENCODING_MAP = config.ENCODING_MAP
+SCALING_MAP = config.SCALING_MAP
+MODEL_MAP = config.MODEL_MAP
+HP_IMPUTATION_KNN_N_NEIGHBORS = config.HP_IMPUTATION_KNN_N_NEIGHBORS
+HP_IMPUTATION_MISSFOREST_N_ESTIMATORS = config.HP_IMPUTATION_MISSFOREST_N_ESTIMATORS
+HP_IMPUTATION_MISSFOREST_MAX_ITER = config.HP_IMPUTATION_MISSFOREST_MAX_ITER
+
+HP_OUTLIER_IF_N_ESTIMATORS = config.HP_OUTLIER_IF_N_ESTIMATORS
+HP_OUTLIER_IF_CONTAMINATION = config.HP_OUTLIER_IF_CONTAMINATION
+HP_OUTLIER_IQR_MULTIPLIER = config.HP_OUTLIER_IQR_MULTIPLIER
+
+HP_RESAMPLING_ROS_STRATEGY = config.HP_RESAMPLING_ROS_STRATEGY
+HP_RESAMPLING_SMOTE_K_NEIGHBORS = config.HP_RESAMPLING_SMOTE_K_NEIGHBORS
+HP_RESAMPLING_SMOTE_STRATEGY = config.HP_RESAMPLING_SMOTE_STRATEGY
+HP_RESAMPLING_ADASYN_N_NEIGHBORS = config.HP_RESAMPLING_ADASYN_N_NEIGHBORS
+HP_RESAMPLING_ADASYN_STRATEGY = config.HP_RESAMPLING_ADASYN_STRATEGY
+
+HP_ENCODING_ONEHOT_MAX_CARDINALITY = config.HP_ENCODING_ONEHOT_MAX_CARDINALITY
+HP_ENCODING_ONEHOT_DROP = config.HP_ENCODING_ONEHOT_DROP
+HP_ENCODING_LSA_N_COMPONENTS = config.HP_ENCODING_LSA_N_COMPONENTS
+HP_ENCODING_LSA_NGRAM_MAX = config.HP_ENCODING_LSA_NGRAM_MAX
+HP_ENCODING_W2V_DIM = config.HP_ENCODING_W2V_DIM
+HP_ENCODING_W2V_WINDOW = config.HP_ENCODING_W2V_WINDOW
+
+HP_SCALING_STANDARD_WITH_MEAN = config.HP_SCALING_STANDARD_WITH_MEAN
+HP_SCALING_STANDARD_WITH_STD = config.HP_SCALING_STANDARD_WITH_STD
+
+HP_MODEL_LOGREG_C = config.HP_MODEL_LOGREG_C
+HP_MODEL_LOGREG_PENALTY_SOLVER = config.HP_MODEL_LOGREG_PENALTY_SOLVER
+HP_MODEL_LOGREG_CLASS_WEIGHT = config.HP_MODEL_LOGREG_CLASS_WEIGHT
+HP_MODEL_LOGREG_MAX_ITER = config.HP_MODEL_LOGREG_MAX_ITER
+
+HP_MODEL_RF_N_ESTIMATORS = config.HP_MODEL_RF_N_ESTIMATORS
+HP_MODEL_RF_MAX_DEPTH = config.HP_MODEL_RF_MAX_DEPTH
+HP_MODEL_RF_MIN_SAMPLES_SPLIT = config.HP_MODEL_RF_MIN_SAMPLES_SPLIT
+HP_MODEL_RF_MIN_SAMPLES_LEAF = config.HP_MODEL_RF_MIN_SAMPLES_LEAF
+
+HP_MODEL_GB_N_ESTIMATORS = config.HP_MODEL_GB_N_ESTIMATORS
+HP_MODEL_GB_LEARNING_RATE = config.HP_MODEL_GB_LEARNING_RATE
+HP_MODEL_GB_MAX_DEPTH = config.HP_MODEL_GB_MAX_DEPTH
+HP_MODEL_GB_SUBSAMPLE = config.HP_MODEL_GB_SUBSAMPLE
+
+HP_MODEL_NN_LAYERS = config.HP_MODEL_NN_LAYERS
+HP_MODEL_NN_DROPOUT = config.HP_MODEL_NN_DROPOUT
+HP_MODEL_NN_LR = config.HP_MODEL_NN_LR
+HP_MODEL_NN_BATCH_SIZE = config.HP_MODEL_NN_BATCH_SIZE
+
+POPULATION_SIZE = 10  
+NUM_GENERATIONS = 8
+MAX_GENERATIONS = NUM_GENERATIONS
+ELITISM_PERCENT = 0.25 
+MUTATION_RATE = 0.1   
+TOURNAMENT_SIZE = 3
+
+TRAIN_PATH = "../datasets/diabetes.csv"
+TARGET_COLUMN = "Outcome"  
+
 
 GENE_CHOICES_COUNT = [
     len(IMPUTATION_MAP), # Imputation Method (0)
@@ -60,61 +132,39 @@ GENE_CHOICES_COUNT = [
     max(len(HP_MODEL_LOGREG_C), len(HP_MODEL_RF_N_ESTIMATORS), len(HP_MODEL_GB_N_ESTIMATORS), len(HP_MODEL_NN_LAYERS)), # Model HP1 (16)
     max(len(HP_MODEL_LOGREG_PENALTY_SOLVER), len(HP_MODEL_RF_MAX_DEPTH), len(HP_MODEL_GB_LEARNING_RATE), len(HP_MODEL_NN_DROPOUT)), # Model HP2 (17)
     max(len(HP_MODEL_LOGREG_CLASS_WEIGHT), len(HP_MODEL_RF_MIN_SAMPLES_SPLIT), len(HP_MODEL_GB_MAX_DEPTH), len(HP_MODEL_NN_LR)), # Model HP3 (18)
-    max(len(HP_MODEL_LOGREG_MAX_ITER), len(HP_MODEL_RF_MIN_SAMPLES_LEAF), len(HP_MODEL_GB_SUBSAMPLE), len(HP_MODEL_NN_BATCH_SIZE)) # Model HP4 (19) - New
+    max(len(HP_MODEL_LOGREG_MAX_ITER), len(HP_MODEL_RF_MIN_SAMPLES_LEAF), len(HP_MODEL_GB_SUBSAMPLE), len(HP_MODEL_NN_BATCH_SIZE)) # Model HP4 (19)
 ]
 
-# Ensure GENE_CHOICES_COUNT has 20 elements, one for each gene.
 if len(GENE_CHOICES_COUNT) != 20:
     raise ValueError(f"GENE_CHOICES_COUNT should have 20 elements, but has {len(GENE_CHOICES_COUNT)}")
 
 def initialize_individual():
-    """Initializes a single random 19-gene chromosome."""
     individual = [np.random.randint(0, max_val) if max_val > 0 else 0 for max_val in GENE_CHOICES_COUNT]
     return individual
 
 def initialize_population(pop_size):
-    """Initializes a population of random chromosomes."""
     return [initialize_individual() for _ in range(pop_size)]
 
 def select_parent_tournament(population_with_fitness, tournament_size):
-    """Selects a single parent using tournament selection.
-    Args:
-        population_with_fitness: List of tuples (chromosome, fitness_score).
-        tournament_size: Number of individuals to participate in the tournament.
-    Returns:
-        A single chromosome (the winner of the tournament).
-    """
     if not population_with_fitness:
-        print("Warning: Attempted to select parent from empty or invalid population_with_fitness. Returning new random individual.")
         return initialize_individual()
 
     actual_tournament_size = min(tournament_size, len(population_with_fitness))
     if actual_tournament_size == 0:
-         print("Warning: Tournament size became 0. Returning new random individual.")
-         return initialize_individual()
+        return initialize_individual()
 
-    # Select indices for the tournament
     tournament_indices = np.random.choice(len(population_with_fitness), size=actual_tournament_size, replace=False)
     tournament_contestants = [population_with_fitness[i] for i in tournament_indices]
     
-    # Sort by fitness (descending) and pick the best (highest fitness)
     winner = max(tournament_contestants, key=lambda x: x[1])
-    return winner[0] # Return the chromosome of the winner
+    return winner[0]
 
 def crossover(parent1, parent2):
-    """Performs single-point crossover between two parents.
-    Args:
-        parent1: The first parent chromosome (list of genes).
-        parent2: The second parent chromosome (list of genes).
-    Returns:
-        Two offspring chromosomes (tuple of two lists of genes).
-    """
     if len(parent1) != len(parent2):
         raise ValueError("Parents must have the same chromosome length for crossover.")
-    if len(parent1) < 2: # Crossover point needs at least 1 gene on each side
-        return list(parent1), list(parent2) # No crossover if too short
+    if len(parent1) < 2:
+        return list(parent1), list(parent2)
 
-    # Choose a random crossover point (ensuring it's not at the very ends)
     c_point = np.random.randint(1, len(parent1)) 
     
     offspring1 = parent1[:c_point] + parent2[c_point:]
@@ -131,34 +181,28 @@ def mutate(chromosome, mutation_rate, gene_choices_count):
     Returns:
         The mutated chromosome (list of genes).
     """
-    mutated_chromosome = list(chromosome) # Work on a copy
+    mutated_chromosome = list(chromosome) 
     for i in range(len(mutated_chromosome)):
         if np.random.rand() < mutation_rate:
-            if gene_choices_count[i] > 0: # Ensure there are choices for this gene
-                # Simple mutation: pick a new random valid integer for this gene
-                # To ensure it's different (optional, but can be good for exploration):
+            if gene_choices_count[i] > 0: 
                 current_value = mutated_chromosome[i]
                 new_value = np.random.randint(0, gene_choices_count[i])
-                # If gene_choices_count[i] is 1 (only one option), it can't change.
-                # If it's > 1, try to ensure the new value is different.
+
                 if gene_choices_count[i] > 1:
                     while new_value == current_value:
                         new_value = np.random.randint(0, gene_choices_count[i])
                 mutated_chromosome[i] = new_value
-            # If gene_choices_count[i] is 0, it means no valid choice, so can't mutate.
-            # This shouldn't happen if GENE_CHOICES_COUNT is correctly defined based on HP maps.
+ 
     return mutated_chromosome
 
 def evaluate_chromosome(chromosome_genes, train_path_ga, test_path_ga, target_column_ga, base_research_path_ga, gen_learning_curves_ga):
     """Evaluates a single chromosome and returns its fitness (PR AUC) and model type."""
-    # decode_and_log_chromosome now returns a dictionary of pipeline parameters
     decoded_pipeline_params = decode_and_log_chromosome(chromosome_genes) 
     
     # Initialize model_type to None in case of early failure
     model_type_for_return = None
 
     if decoded_pipeline_params is None:
-        print("Error decoding chromosome during evaluation. Assigning low fitness.")
         return -1.0, model_type_for_return # Low fitness for errors
 
     # Extract parameters from the decoded dictionary
@@ -177,15 +221,10 @@ def evaluate_chromosome(chromosome_genes, train_path_ga, test_path_ga, target_co
     
     model_type_for_return = current_model_type # Assign actual model type if decoding was successful
 
-    print(f"\n--- Evaluating Pipeline from Chromosome: {chromosome_genes} ---")
-    # Logging already handled by decode_and_log_chromosome, this is just a confirmation
-    # print(f"Parameters: Imp={current_imputation_method}, Out={current_outlier_method}, Res={current_resampling_method}, Enc={current_encoding_method}, Scale={current_scaling_method}, Model={current_model_type}")
-    # print(f"Full Decoded HPs: {decoded_pipeline_params}")
-
     fitness = -1.0 
     try:
-        print(f"\n[GA - Chromosome: {chromosome_genes}] Calling process_data...")
-        processed_train_data_df, processed_test_data_df, research_path_for_chromosome_config = process_data(
+        print(f"\n[GA - Chromosome: {chromosome_genes}] Calling process_data...") # Reduced verbosity
+        processed_train_data_df, processed_test_data_df, research_path_for_chromosome_config, preprocessor_states = process_data(
             train_path_ga, test_path_ga, target_column_ga,
             imputation_method=current_imputation_method,
             imputation_params=current_imputation_params,
@@ -202,11 +241,11 @@ def evaluate_chromosome(chromosome_genes, train_path_ga, test_path_ga, target_co
         )
         
         if processed_train_data_df is None: 
-            print(f"Data processing failed for chromosome {chromosome_genes}. Skipping model training.")
+            print(f"Data processing failed for chromosome {chromosome_genes}. Skipping model training.") # Keep for potential error feedback
             return -1.0, model_type_for_return # Return model_type even on processing failure
             
-        print(f"[GA - Chromosome: {chromosome_genes}] Calling train_model for model: {current_model_type}...")
-        metrics_output, ft_importance_output = train_model(
+        # print(f"[GA - Chromosome: {chromosome_genes}] Calling train_model for model: {current_model_type}...") # Reduced verbosity
+        metrics_output, ft_importance_output, trainer_dropped_cols = train_model(
             processed_train_data_df, 
             processed_test_data_df,  
             target_column_ga,
@@ -234,26 +273,25 @@ def evaluate_chromosome(chromosome_genes, train_path_ga, test_path_ga, target_co
                     fitness = metric_source_dict['auprc']
                     if fitness is None or pd.isna(fitness): 
                         print(f"Warning: AUPRC for chromosome {chromosome_genes} (eval set: {eval_set_key_used}) is None/NaN. Assigning low fitness.")
-                        fitness = -0.5 
+                        fitness = -0.5
                     else:
-                        fitness_metric_name = "AUPRC"
-                        print(f"Model training completed for {chromosome_genes} (eval set: {eval_set_key_used}). Fitness (AUPRC): {fitness:.4f}")
+                        print(f"Model training completed for {chromosome_genes} (eval set: {eval_set_key_used}). Fitness (AUPRC): {fitness:.4f}") 
                 elif 'average_precision_weighted' in metric_source_dict and current_model_type != 'neural_network': 
                     fitness = metric_source_dict['average_precision_weighted']
                     fitness_metric_name = "Avg_Precision_Weighted"
                     if fitness is None or pd.isna(fitness):
-                        print(f"Warning: Weighted Average Precision for {chromosome_genes} (eval set: {eval_set_key_used}) is None/NaN. Assigning low fitness.")
+                        print(f"Warning: Weighted Average Precision for {chromosome_genes} (eval set: {eval_set_key_used}) is None/NaN. Assigning low fitness.") # Keep for potential error feedback
                         fitness = -0.6
                     else:
-                        print(f"Model training completed for {chromosome_genes} (eval set: {eval_set_key_used}). Fitness (Avg Precision Weighted): {fitness:.4f}")
+                        print(f"Model training completed for {chromosome_genes} (eval set: {eval_set_key_used}). Fitness (Avg Precision Weighted): {fitness:.4f}") # Reduced verbosity
                 elif 'accuracy' in metric_source_dict: # Fallback to accuracy if other primary metrics are missing
                     fitness = metric_source_dict['accuracy'] 
                     fitness_metric_name = "Accuracy"
-                    print(f"Warning: AUPRC and Avg_Precision_Weighted not found in '{eval_set_key_used}' dict for chromosome {chromosome_genes}. Using Accuracy: {fitness:.4f} as fitness.")
+                    print(f"Warning: AUPRC and Avg_Precision_Weighted not found in '{eval_set_key_used}' dict for chromosome {chromosome_genes}. Using Accuracy: {fitness:.4f} as fitness.") # Keep for potential error feedback
                     if fitness is None or pd.isna(fitness):
                         fitness = -0.7 # Low fitness for NaN accuracy
                 else:
-                    print(f"Core fitness metrics (AUPRC, Avg_Precision_Weighted, Accuracy) not found in '{eval_set_key_used}' dict for chromosome {chromosome_genes}. Keys: {metric_source_dict.keys()}. Assigning low fitness.")
+                    print(f"Core fitness metrics (AUPRC, Avg_Precision_Weighted, Accuracy) not found in '{eval_set_key_used}' dict for chromosome {chromosome_genes}. Keys: {metric_source_dict.keys()}. Assigning low fitness.") # Keep for potential error feedback
                     fitness = -0.85
             else: # Fallback path: metrics might be in a flat structure directly under metrics_output
                 if 'auprc' in metrics_output:
@@ -261,105 +299,101 @@ def evaluate_chromosome(chromosome_genes, train_path_ga, test_path_ga, target_co
                     eval_set_key_used = 'top-level'
                     fitness_metric_name = "AUPRC"
                     if fitness is None or pd.isna(fitness):
-                        print(f"Warning: AUPRC for chromosome {chromosome_genes} (eval set: {eval_set_key_used}) is None/NaN. Assigning low fitness.")
-                        fitness = -0.51 
+                        print(f"Warning: AUPRC for chromosome {chromosome_genes} (eval set: {eval_set_key_used}) is None/NaN. Assigning low fitness.") # Keep for potential error feedback
+                        fitness = -0.51
                     else:
-                        print(f"Model training completed for {chromosome_genes} (eval set: {eval_set_key_used}). Fitness (AUPRC): {fitness:.4f}")
+                        print(f"Model training completed for {chromosome_genes} (eval set: {eval_set_key_used}). Fitness (AUPRC): {fitness:.4f}") # Reduced verbosity
                 elif 'average_precision_weighted' in metrics_output and current_model_type != 'neural_network':
                     fitness = metrics_output['average_precision_weighted']
                     fitness_metric_name = "Avg_Precision_Weighted"
                     eval_set_key_used = 'top-level'
                     if fitness is None or pd.isna(fitness):
-                        print(f"Warning: Weighted Average Precision for {chromosome_genes} (eval set: {eval_set_key_used}) is None/NaN. Assigning low fitness.")
+                        print(f"Warning: Weighted Average Precision for {chromosome_genes} (eval set: {eval_set_key_used}) is None/NaN. Assigning low fitness.") # Keep for potential error feedback
                         fitness = -0.61
                     else:
-                        print(f"Model training completed for {chromosome_genes} (eval set: {eval_set_key_used}). Fitness (Avg Precision Weighted): {fitness:.4f}")
+                        print(f"Model training completed for {chromosome_genes} (eval set: {eval_set_key_used}). Fitness (Avg Precision Weighted): {fitness:.4f}") # Reduced verbosity
                 elif 'accuracy' in metrics_output: # Fallback to accuracy in flat structure
                     fitness = metrics_output['accuracy']
                     fitness_metric_name = "Accuracy"
                     eval_set_key_used = 'top-level'
-                    print(f"Warning: AUPRC and Avg_Precision_Weighted not found at top-level for chromosome {chromosome_genes}. Using Accuracy: {fitness:.4f} as fitness.")
+                    print(f"Warning: AUPRC and Avg_Precision_Weighted not found at top-level for chromosome {chromosome_genes}. Using Accuracy: {fitness:.4f} as fitness.") # Keep for potential error feedback
                     if fitness is None or pd.isna(fitness):
                         fitness = -0.71 # Low fitness for NaN accuracy at top-level
                 else:
-                    print(f"Neither nested eval dict nor top-level AUPRC/Avg_Prec_Weighted/Accuracy found in metrics_output for chromosome {chromosome_genes}. Metric Keys: {metrics_output.keys()}. Assigning low fitness.")
+                    print(f"Neither nested eval dict nor top-level AUPRC/Avg_Prec_Weighted/Accuracy found in metrics_output for chromosome {chromosome_genes}. Metric Keys: {metrics_output.keys()}. Assigning low fitness.") # Keep for potential error feedback
                     fitness = -0.8
         else:
-            print(f"Model training failed or did not produce metrics for chromosome {chromosome_genes}. Assigning low fitness.")
+            print(f"Model training failed or did not produce metrics for chromosome {chromosome_genes}. Assigning low fitness.") # Keep for potential error feedback
             fitness = -0.9 
         
-        print(f"[GA - Chromosome: {chromosome_genes}] Fitness ({fitness_metric_name}) determination complete.")
+        print(f"[GA - Chromosome: {chromosome_genes}] Fitness ({fitness_metric_name}) determination complete.") # Reduced verbosity
 
     except Exception as e:
         print(f"Error evaluating chromosome {chromosome_genes}: {e}")
-        # import traceback
-        # traceback.print_exc()
         fitness = -1.0 # Ensure low fitness on any exception
-    
-    # decoded_pipeline_params already contains the full structure, so we don't need to call decode again for logging.
+
     print(f"Final Chromosome: {chromosome_genes}, Decoded Model: {model_type_for_return}, Fitness: {fitness:.4f}")
     return fitness, model_type_for_return
 
-def run_genetic_algorithm():
-    """Main function to set up and run the genetic algorithm."""
-    print("\n=== Setting up GA for Credit Score Dataset ===")
-
-
-    train_path = "datasets/credit-score-classification/train.csv"
-    test_path = "datasets/credit-score-classification/test.csv"
-    target_column = "Credit_Score"
-
-    # train_path = "datasets/credit-score-classification-manual-cleaned.csv"
-    # test_path = None
-    # target_column = "Credit_Score"
-
-    # train_path = "datasets/diabetes.csv"
-    # test_path = None
-    # target_column = "Outcome"
-
-    # train_path = "datasets/UCI_Credit_Card.csv"
-    # test_path = None
-    # target_column = "default.payment.next.month"
-
-    # train_path = "datasets/Loan_Default.csv"
-    # test_path = None
-    # target_column = "Status"
+def run_genetic_algorithm(ga_config=None):
+    """
+    Main function to set up and run the genetic algorithm.
+    
+    Args:
+        ga_config: GAConfig instance with parameters, or None for default config
+    """
+    # Создаем конфигурацию по умолчанию если не передана
+    if ga_config is None:
+        ga_config = GAConfig(
+            train_path=TRAIN_PATH,
+            test_path=None,
+            target_column=TARGET_COLUMN
+        )
+    
+    print(f"\n=== Starting Genetic Algorithm ===")
+    print(f"Configuration: {ga_config}")
+    
+    # Извлекаем параметры из конфигурации
+    train_path = ga_config.train_path
+    test_path = ga_config.test_path
+    target_column = ga_config.target_column
+    population_size = ga_config.population_size
+    num_generations = ga_config.num_generations
+    elitism_percent = ga_config.elitism_percent
+    mutation_rate = ga_config.mutation_rate
+    tournament_size = ga_config.tournament_size
+    generate_learning_curves = ga_config.generate_learning_curves
 
     # --- Check for dataset existence ---
     if not os.path.exists(train_path):
         print(f"Error: Training data file not found at: {train_path}")
-        return
+        return None
     if test_path is not None and not os.path.exists(test_path):
         print(f"Error: Test data file not found at: {test_path}")
-        return
+        return None
     # ---
-    
-    generate_learning_curves = False
 
-    print("\n=== Starting Genetic Algorithm ===")
     ga_base_research_path = os.path.join("research", get_dataset_name(train_path), "genetic_algorithm_runs")
     os.makedirs(ga_base_research_path, exist_ok=True)
 
-    population = initialize_population(POPULATION_SIZE) # Uses new 20-gene init
+    population = initialize_population(population_size) 
     best_overall_chromosome = None
     best_overall_fitness = -1.0 
     best_fitness_over_generations = [] 
     all_individuals_details_over_generations = [] 
     
-    # New: To store best fitness per model type for each generation
-    # Structure: { 'model_type_name': [fitness_gen1, fitness_gen2, ...], ... }
     best_fitness_per_model_type_over_generations = {
         model_name: [] for model_name in MODEL_MAP.values()
     }
 
     try: 
-        for gen in range(NUM_GENERATIONS):
-            print(f"\n--- Generation {gen + 1}/{NUM_GENERATIONS} ---")
+        for gen in range(num_generations):
+            print(f"\n--- Generation {gen + 1}/{num_generations} ---") # Keep for progress tracking
             current_generation_details = [] 
             population_eval_results = [] 
 
             for i, ind_chromosome in enumerate(population):
-                print(f"\nEvaluating Individual {i+1}/{POPULATION_SIZE} in Generation {gen+1}")
+                print(f"\nEvaluating Individual {i+1}/{population_size} in Generation {gen+1}")
                 current_fitness, current_model_type = evaluate_chromosome(ind_chromosome, train_path, test_path, target_column, ga_base_research_path, generate_learning_curves)
                 population_eval_results.append((ind_chromosome, current_fitness, current_model_type))
                 current_generation_details.append((current_fitness, current_model_type)) 
@@ -367,14 +401,13 @@ def run_genetic_algorithm():
                 if current_fitness > best_overall_fitness:
                     best_overall_fitness = current_fitness
                     best_overall_chromosome = ind_chromosome
-                    print(f"*** New best overall chromosome found in Gen {gen+1}, Ind {i+1}: {best_overall_chromosome} with fitness: {best_overall_fitness:.4f} (Model: {current_model_type}) ***")
+                    print(f"*** New best: Gen {gen+1}, Ind {i+1}: {best_overall_chromosome} -> Fit: {best_overall_fitness:.4f} (Model: {current_model_type}) ***") # Keep for important events
 
             population_eval_results.sort(key=lambda x: x[1], reverse=True)
             population_with_fitness = [(item[0], item[1]) for item in population_eval_results]
             
             if not population_eval_results: 
-                print("Warning: Population is empty after evaluation (population_eval_results).")
-                # Populate with NaN for this generation if no results
+                print("Warning: Population is empty after evaluation (population_eval_results).") # Keep for potential error feedback
                 for model_name in MODEL_MAP.values():
                     best_fitness_per_model_type_over_generations[model_name].append(np.nan)
                 best_fitness_over_generations.append(np.nan) # Also for overall best
@@ -398,52 +431,44 @@ def run_genetic_algorithm():
                 else: # Model type not present in this generation
                     best_fitness_per_model_type_over_generations[model_name].append(np.nan) # Use NaN for missing data points
 
-            print(f"\nEnd of Generation {gen + 1}. Best overall fitness in this generation: {current_gen_best_overall_fitness:.4f}")
-            print(f"Best chromosome this generation: {population_eval_results[0][0]} (Model: {current_gen_best_overall_model_type}, Fitness: {population_eval_results[0][1]:.4f})")
-            # Log best for each type if needed here
+            print(f"\nEnd of Generation {gen + 1}. Best overall fitness in this generation: {current_gen_best_overall_fitness:.4f}") # Reduced verbosity
+            print(f"Best chromosome this generation: {population_eval_results[0][0]} (Model: {current_gen_best_overall_model_type}, Fitness: {population_eval_results[0][1]:.4f})") # Reduced verbosity
 
-            if gen < NUM_GENERATIONS - 1:
+            if gen < num_generations - 1:
                 next_population = []
-                num_elite = int(POPULATION_SIZE * ELITISM_PERCENT)
+                num_elite = int(population_size * elitism_percent)
                 
-                # Elitism: Carry over the best individuals (chromosomes only from population_eval_results)
                 if num_elite > 0 and population_eval_results:
                     elite_individuals = [item[0] for item in population_eval_results[:num_elite]]
                     next_population.extend(elite_individuals)
-                    # print(f"Carried over {len(elite_individuals)} elite individuals.")
 
-                # Fill the rest of the population with offspring
-                num_offspring_needed = POPULATION_SIZE - len(next_population)
+                num_offspring_needed = population_size - len(next_population)
                 offspring_generated = 0
 
-                # Ensure population_with_fitness (for parent selection) is not empty
                 if not population_with_fitness:
-                    print("Warning: Current population (for parent selection) is empty. Cannot select parents. Filling with random individuals.")
                     next_population.extend([initialize_individual() for _ in range(num_offspring_needed)])
                 else:
                     # Generate offspring through crossover and mutation
                     while offspring_generated < num_offspring_needed:
                         # Select parents using population_with_fitness (chromosome, fitness)
-                        parent1 = select_parent_tournament(population_with_fitness, TOURNAMENT_SIZE)
-                        parent2 = select_parent_tournament(population_with_fitness, TOURNAMENT_SIZE)
+                        parent1 = select_parent_tournament(population_with_fitness, tournament_size)
+                        parent2 = select_parent_tournament(population_with_fitness, tournament_size)
                         
                         offspring1, offspring2 = crossover(parent1, parent2)
                         
-                        mutated_offspring1 = mutate(offspring1, MUTATION_RATE, GENE_CHOICES_COUNT)
+                        mutated_offspring1 = mutate(offspring1, mutation_rate, GENE_CHOICES_COUNT)
                         if offspring_generated < num_offspring_needed:
                             next_population.append(mutated_offspring1)
                             offspring_generated += 1
                         
                         if offspring_generated < num_offspring_needed:
-                            mutated_offspring2 = mutate(offspring2, MUTATION_RATE, GENE_CHOICES_COUNT)
+                            mutated_offspring2 = mutate(offspring2, mutation_rate, GENE_CHOICES_COUNT)
                             next_population.append(mutated_offspring2)
                             offspring_generated += 1
                 
-                population = next_population[:POPULATION_SIZE] 
-                if not population and POPULATION_SIZE > 0:
-                    print("Warning: Next population became empty after operators. Re-initializing with random individuals.")
-                    population = initialize_population(POPULATION_SIZE)
-                # print(f"Next generation created with {len(population)} individuals.")
+                population = next_population[:population_size] 
+                if not population and population_size > 0:
+                    population = initialize_population(population_size)
 
     finally: 
         if best_fitness_over_generations:
@@ -473,24 +498,6 @@ def run_genetic_algorithm():
             
             legend_handles_map = {} # Using a map for easier handle management
 
-            # 1. Plot all individual fitness scores (scatter points) - THIS SECTION WILL BE REMOVED/COMMENTED
-            # for gen_idx, individual_details_in_gen in enumerate(all_individuals_details_over_generations):
-            #     gen_x_coord = generations_x_axis[gen_idx]
-            #     for fitness_score, model_type_str in individual_details_in_gen:
-            #         color = model_colors.get(model_type_str, 'lightgrey')
-            #         # Scatter for individuals - no separate legend entry per point needed if lines are present
-            #         # We can add one entry per model type for the scatter points if desired,
-            #         # but the lines will carry the primary legend info for model types.
-            #         # Let's use a generic scatter label or one that's overridden by line plots.
-            #         scatter_label = model_names_display.get(model_type_str, "Unknown Indiv.") + " (Indiv.)"
-            #         if scatter_label not in legend_handles_map: # Add once per type for scatter
-            #              # legend_handles_map[scatter_label] = plt.scatter(gen_x_coord, fitness_score, color=color, alpha=0.3, s=20, label=scatter_label)
-            #              # For now, let's not add individual scatter points to legend to reduce clutter
-            #              plt.scatter(gen_x_coord, fitness_score, color=color, alpha=0.25, s=25)
-            #         else:
-            #              plt.scatter(gen_x_coord, fitness_score, color=color, alpha=0.25, s=25)
-
-            # 2. Plot lines for best fitness per model type (markers on these lines are the points of interest)
             for model_name, original_fitness_list in best_fitness_per_model_type_over_generations.items():
                 if model_name in model_colors: # Ensure we have a color/marker for it
                     
@@ -520,13 +527,12 @@ def run_genetic_algorithm():
                         actual_data_x_coords = [generations_x_axis[i] for i, y_val in enumerate(original_fitness_list) if not pd.isna(y_val)]
                         actual_data_y_coords = [y_val for y_val in original_fitness_list if not pd.isna(y_val)]
                         
-                        if actual_data_x_coords: # If there are any actual data points to mark
+                        if actual_data_x_coords: 
                             plt.plot(actual_data_x_coords, actual_data_y_coords, 
                                      marker=model_markers.get(model_name, '.'), 
                                      linestyle='None', # Crucial: no line for this plot, just markers
                                      color=model_colors[model_name],
                                      markersize=7
-                                     # No label here, as the line plot already has it and is in legend_handles_map
                                      )
             
             # 3. Plot the overall best fitness line (highlighted)
@@ -547,10 +553,6 @@ def run_genetic_algorithm():
                 display_name = model_names_display.get(mt_key)
                 if display_name in legend_handles_map and display_name not in preferred_order:
                     preferred_order.append(display_name)
-            
-            # Note: Scatter points for individual models are intentionally not added to the legend
-            # to keep it clean, as per the current implementation where their labels are mostly "_nolegend_"
-            # or would be very numerous. The lines for "Model X Best" are the primary legend items for model types.
 
             final_handles = [legend_handles_map[label] for label in preferred_order if label in legend_handles_map]
             final_labels = [label for label in preferred_order if label in legend_handles_map]
@@ -565,20 +567,27 @@ def run_genetic_algorithm():
             plot_save_path = os.path.join(ga_base_research_path, "ga_fitness_progression_detailed_v2.png") # New name
             try:
                 plt.savefig(plot_save_path)
-                print(f"\nFitness progression plot saved to {plot_save_path}")
+                print(f"\nFitness progression plot saved to {plot_save_path}") # Keep for confirmation
             except Exception as e:
-                print(f"Error saving fitness progression plot: {e}")
+                print(f"Error saving fitness progression plot: {e}") # Keep for error feedback
             plt.close()
 
-    print("\n=== Genetic Algorithm Finished ===")
+    print("\n=== Genetic Algorithm Finished ===") # Keep for context
     if best_overall_chromosome:
-        print(f"Best overall chromosome found across all generations: {best_overall_chromosome}")
-        # decode_and_log_chromosome is called again here for the final best chromosome to display full details
-        print("Details of the Best Chromosome:")
+        print(f"Best overall chromosome found across all generations: {best_overall_chromosome}") # Keep for results
+        print("Details of the Best Chromosome:") # Keep for results
         decode_and_log_chromosome(best_overall_chromosome) 
-        print(f"Best overall fitness (AUPRC): {best_overall_fitness:.4f}")
+        print(f"Best overall fitness (AUPRC): {best_overall_fitness:.4f}") # Keep for results
     else:
-        print("No successful evaluation run or no improvement found in the GA.")
+        print("No successful evaluation run or no improvement found in the GA.") # Keep for context
+    
+    # Возвращаем результаты оптимизации
+    return {
+        'best_chromosome': best_overall_chromosome,
+        'best_fitness': best_overall_fitness,
+        'fitness_history': best_fitness_over_generations,
+        'config': ga_config
+    }
 
 if __name__ == '__main__':
     run_genetic_algorithm() 

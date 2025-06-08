@@ -12,24 +12,17 @@ from sklearn.experimental import enable_iterative_imputer
 from sklearn.impute import IterativeImputer
 from category_encoders import LeaveOneOutEncoder
 
-# Optional imports for embeddings with improved error handling
+
 GENSIM_AVAILABLE = False
+MISSFOREST_AVAILABLE = False
 try:
     import gensim
     from gensim.models import FastText
     GENSIM_AVAILABLE = True
 except ImportError as e:
-    # print(f"Error importing gensim: {e}")
-    # print("Gensim not available. Install with: pip install gensim")
-    pass # Allow to run without gensim if not used
+    pass
 
 class DataPreprocessor:
-    """
-    Class for data preprocessing including:
-    - Missing value imputation
-    - Categorical encoding
-    - Feature type handling
-    """
     def __init__(self):
         self.encoders = {}
         self.cat_columns = []
@@ -44,14 +37,44 @@ class DataPreprocessor:
         self.word2vec_dims = 50
         self.imputed_medians = {}
         self.imputed_modes = {}
+        
+    def get_preprocessor_state(self):
+        return {
+            'encoders': self.encoders,
+            'cat_columns': self.cat_columns,
+            'numeric_columns': self.numeric_columns,
+            'target_encoder_le': self.target_encoder_le,
+            'lsa_vectorizer': self.lsa_vectorizer,
+            'lsa_svd': self.lsa_svd,
+            'lsa_feature_names': self.lsa_feature_names,
+            'medians': self.medians,
+            'lsa_components': self.lsa_components,
+            'word2vec_models': self.word2vec_models,
+            'word2vec_dims': self.word2vec_dims,
+            'imputed_medians': self.imputed_medians,
+            'imputed_modes': self.imputed_modes
+        }
+    
+    def set_preprocessor_state(self, state):
+        self.encoders = state.get('encoders', {})
+        self.cat_columns = state.get('cat_columns', [])
+        self.numeric_columns = state.get('numeric_columns', [])
+        self.target_encoder_le = state.get('target_encoder_le', None)
+        self.lsa_vectorizer = state.get('lsa_vectorizer', None)
+        self.lsa_svd = state.get('lsa_svd', None)
+        self.lsa_feature_names = state.get('lsa_feature_names', None)
+        self.medians = state.get('medians', {})
+        self.lsa_components = state.get('lsa_components', {})
+        self.word2vec_models = state.get('word2vec_models', {})
+        self.word2vec_dims = state.get('word2vec_dims', 50)
+        self.imputed_medians = state.get('imputed_medians', {})
+        self.imputed_modes = state.get('imputed_modes', {})
 
     def _get_column_types(self, data):
-        """Identify numeric and categorical columns in the dataset."""
         self.numeric_columns = data.select_dtypes(include=np.number).columns.tolist()
         self.cat_columns = data.select_dtypes(include=['object', 'category', 'string']).columns.tolist()
 
     def _impute_median(self, data):
-        """Impute missing values in numeric columns using the median."""
         data = data.copy()
         numeric_cols_present = [col for col in self.numeric_columns if col in data.columns]
 
@@ -74,7 +97,6 @@ class DataPreprocessor:
         return data
 
     def impute_knn(self, data, n_neighbors=5):
-        """Impute missing values in numeric columns using KNN."""
         numeric_cols = data.select_dtypes(include=["number"]).columns
         if not numeric_cols.empty:
             imputer = KNNImputer(n_neighbors=n_neighbors)
@@ -88,7 +110,6 @@ class DataPreprocessor:
         return data
 
     def impute_categorical(self, data):
-        """Impute missing values in categorical columns using mode."""
         cat_cols_present = [col for col in self.cat_columns if col in data.columns]
         for col in cat_cols_present:
             data[col] = data[col].astype(str)
@@ -104,9 +125,6 @@ class DataPreprocessor:
         return data
 
     def impute_missforest(self, data, max_iter=10, n_estimators=100, random_state=42):
-        """
-        Impute missing values using MissForest or IterativeImputer as fallback.
-        """
         original_columns = data.columns
         if self.cat_columns:
             categorical_columns = [col for col in self.cat_columns if col in data.columns]
@@ -273,14 +291,14 @@ class DataPreprocessor:
         if not cols_to_encode:
             return data
         data = data.copy()
-        if self.lsa_vectorizer is None: # Fit only once
+        if self.lsa_vectorizer is None: 
             texts = self._categorical_to_texts(data, cols_to_encode)
-            self.lsa_vectorizer = TfidfVectorizer(ngram_range=ngram_range, min_df=5, max_df=0.5) # Use passed ngram_range
+            self.lsa_vectorizer = TfidfVectorizer(ngram_range=ngram_range, min_df=5, max_df=0.5) 
             term_doc_matrix = self.lsa_vectorizer.fit_transform(texts)
-            self.lsa_svd = TruncatedSVD(n_components=n_components, random_state=42) # Use passed n_components
+            self.lsa_svd = TruncatedSVD(n_components=n_components, random_state=42) 
             lsa_embeddings = self.lsa_svd.fit_transform(term_doc_matrix)
             self.lsa_feature_names = [f'LSA_{i+1}' for i in range(n_components)]
-        else: # Transform using existing
+        else: 
             texts = self._categorical_to_texts(data, cols_to_encode)
             term_doc_matrix = self.lsa_vectorizer.transform(texts)
             lsa_embeddings = self.lsa_svd.transform(term_doc_matrix)
@@ -409,46 +427,35 @@ class DataPreprocessor:
             data_imputed[numeric_cols_with_na] = imputer_knn.fit_transform(data_imputed[numeric_cols_with_na])
         elif method == 'missforest': # This now uses IterativeImputer
             print(f"Using IterativeImputer with RandomForestRegressor for 'missforest' method. Params: {kwargs}")
-            
-            # Prepare parameters for IterativeImputer and RandomForestRegressor
+
             iterative_imputer_hps = {}
             rf_regressor_hps = {}
 
-            # Common HPs that might be passed via kwargs from GA
-            # For IterativeImputer:
             if 'max_iter' in kwargs: iterative_imputer_hps['max_iter'] = kwargs['max_iter']
-            # For RandomForestRegressor (used as estimator):
+
             if 'n_estimators' in kwargs: rf_regressor_hps['n_estimators'] = kwargs['n_estimators']
             if 'max_features' in kwargs: rf_regressor_hps['max_features'] = kwargs['max_features'] # string or int
             if 'min_samples_split' in kwargs: rf_regressor_hps['min_samples_split'] = kwargs['min_samples_split'] # int or float
             if 'min_samples_leaf' in kwargs: rf_regressor_hps['min_samples_leaf'] = kwargs['min_samples_leaf'] # int or float
             
-            # Add random_state for reproducibility if not provided by GA
             iterative_imputer_hps.setdefault('random_state', 42)
             rf_regressor_hps.setdefault('random_state', 42)
-            rf_regressor_hps.setdefault('n_jobs', -1) # Utilize all cores for RF
+            rf_regressor_hps.setdefault('n_jobs', -1)
 
-            # Ensure n_estimators for RF is a positive integer, default if not set or invalid
             if rf_regressor_hps.get('n_estimators', 0) <= 0:
                 rf_regressor_hps['n_estimators'] = 10 # Default to 10 estimators for RF in IterativeImputer
 
             try:
-                # print(f"IterativeImputer HPs: {iterative_imputer_hps}")
-                # print(f"RandomForestRegressor HPs for IterativeImputer: {rf_regressor_hps}")
 
                 iter_imputer = IterativeImputer(
                     estimator=RandomForestRegressor(**rf_regressor_hps),
                     **iterative_imputer_hps
                 )
                 
-                # IterativeImputer should be applied to the part of the dataframe that needs imputation
-                # and has numeric features. Categorical features were already mode-imputed.
                 if numeric_cols_with_na:
-                     # Create a copy of the subset for imputation to avoid SettingWithCopyWarning
                     data_to_impute_subset = data_imputed[numeric_cols_with_na].copy()
                     imputed_values = iter_imputer.fit_transform(data_to_impute_subset)
                     data_imputed[numeric_cols_with_na] = imputed_values
-                # print("IterativeImputer with RandomForestRegressor applied.")
 
             except Exception as e_iter_imp:
                 print(f"Error during IterativeImputer (for 'missforest' method) processing: {e_iter_imp}")

@@ -27,17 +27,14 @@ class OutlierRemover:
         self.outlier_indices_ = None
 
         if self.method == 'isolation_forest':
-            # Extract relevant HPs, provide defaults if not in kwargs
+
             if_n_estimators = self.kwargs.get('n_estimators', 100)
             if_contamination = self.kwargs.get('contamination', 'auto')
             self.model = IsolationForest(n_estimators=if_n_estimators, 
                                          contamination=if_contamination, 
                                          random_state=42)
-            # print(f"IsolationForest initialized with n_estimators={if_n_estimators}, contamination={if_contamination}")
         elif self.method == 'iqr':
-            # multiplier will be used in remove_outliers method directly from self.kwargs
             self.iqr_multiplier = self.kwargs.get('multiplier', 1.5)
-            # print(f"IQR method initialized with multiplier={self.iqr_multiplier}")
             pass # No model to pre-initialize for IQR, logic is in remove_outliers
         elif self.method == 'none':
             # print("Outlier removal method is 'none'. No model initialized.")
@@ -86,7 +83,6 @@ class OutlierRemover:
             mask_inliers = outliers != -1
             
             cleaned_numeric_data = data_numeric_finite[mask_inliers]
-            # print(f"Isolation Forest: {np.sum(~mask_inliers)} outliers removed out of {len(data_numeric_finite)} numeric samples.")
 
         elif self.method == 'iqr':
             multiplier = self.kwargs.get('multiplier', 1.5) # Get from stored kwargs or default
@@ -105,27 +101,23 @@ class OutlierRemover:
             print(f"Unknown or unhandled outlier removal method: {self.method}. Returning original data.")
             return data
         
-        # --- CORRECTED LOGIC FOR FINAL DATA ASSEMBLY ---
+
         if self.method == 'iqr':
             final_data = cleaned_numeric_data # For IQR, cleaned_numeric_data is the full filtered dataframe
         elif self.method == 'isolation_forest':
             if not data_cleaned.drop(columns=numeric_cols, errors='ignore').empty:
-                # Align indices before concatenating
-                # Ensure cleaned_numeric_data.index is a subset of data_cleaned.index if IF was used with dropna
-                # common_index = cleaned_numeric_data.index.intersection(data_cleaned.index) # Not strictly needed here due to .loc
+
                 if not data_numeric_finite.index.equals(data_cleaned[numeric_cols].index):
-                     # If IF dropped rows due to NaNs, we need to be careful with rejoining
-                     # The cleaned_numeric_data already has the correct (potentially reduced) index from data_numeric_finite
-                     # We should use this index to select from non_numeric data
+
                      final_data = pd.concat([cleaned_numeric_data, data_cleaned.drop(columns=numeric_cols, errors='ignore').loc[cleaned_numeric_data.index]], axis=1)
                 else:
-                     # This branch handles IF when no NaNs were dropped from numeric features, or other future numeric-only cleaning methods
+     
                      final_data = pd.concat([cleaned_numeric_data, data_cleaned.drop(columns=numeric_cols, errors='ignore').loc[cleaned_numeric_data.index]], axis=1)
             else:
-                # Only numeric columns were present in the input
+
                 final_data = cleaned_numeric_data
-        else: # Should technically not be reached if method is 'none', 'iqr', or 'isolation_forest'
-            final_data = data_cleaned # Fallback, though 'none' is handled at the start
+        else: 
+            final_data = data_cleaned 
 
         original_shape = data.shape
         cleaned_shape = final_data.shape

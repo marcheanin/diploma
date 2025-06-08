@@ -14,13 +14,11 @@ def save_model_results(metrics, feature_importance, output_path):
     """
     os.makedirs(output_path, exist_ok=True)
     
-    # Save metrics as JSON
     metrics_path = os.path.join(output_path, 'metrics.json')
     with open(metrics_path, 'w') as f:
         json.dump(metrics, f, indent=4)
     print(f"\nMetrics saved to: {metrics_path}")
     
-    # Save feature importance plot
     plt.figure(figsize=(12, 6))
     sns.barplot(data=feature_importance.sort_values('importance', ascending=False),
                 x='importance', y='feature')
@@ -31,7 +29,6 @@ def save_model_results(metrics, feature_importance, output_path):
     plt.close()
     print(f"Feature importance plot saved to: {feature_importance_plot_path}")
     
-    # Save feature importance as CSV
     feature_importance_path = os.path.join(output_path, 'feature_importance.csv')
     feature_importance.to_csv(feature_importance_path, index=False)
     print(f"Feature importance data saved to: {feature_importance_path}") 
