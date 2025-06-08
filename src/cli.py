@@ -1,7 +1,4 @@
 #!/usr/bin/env python3
-"""
-CLI приложение для production deployment системы оптимизации ML пайплайнов
-"""
 
 import argparse
 import sys
@@ -26,22 +23,18 @@ class MLPipelineCLI:
     """Командный интерфейс для ML пайплайна"""
     
     def __init__(self):
-        # Предполагаем что CLI всегда запускается из корня проекта
-        # python src/cli.py list-models
-        project_root = Path.cwd()  # текущая рабочая директория
+        project_root = Path.cwd()
         self.models_dir = project_root / "models"
         self.results_dir = project_root / "results" 
         self.models_dir.mkdir(exist_ok=True)
         self.results_dir.mkdir(exist_ok=True)
         
     def run_chromosome(self, args):
-        """Декодирование хромосомы, обучение и сохранение модели"""
         print(f"🧬 Декодирование хромосомы: {args.chromosome}")
         print(f"📊 Датасет: {args.dataset}")
         print(f"🎯 Целевая переменная: {args.target}")
         
         try:
-            # Декодируем хромосому
             chromosome = [int(x.strip()) for x in args.chromosome.split(',')]
             print(f"🔍 Хромосома: {chromosome}")
             
@@ -52,7 +45,6 @@ class MLPipelineCLI:
             for key, value in params.items():
                 print(f"  {key}: {value}")
             
-            # Обрабатываем данные
             print(f"\n🔄 Обработка данных...")
             train_data, test_data, research_path, preprocessor_states = process_data(
                 args.dataset, None, args.target,
@@ -73,14 +65,13 @@ class MLPipelineCLI:
             print(f"📊 Размер обучающих данных: {train_data.shape}")
             print(f"📊 Размер тестовых данных: {test_data.shape}")
             
-            # Обучаем модель с помощью ModelTrainer
             print(f"\n🚀 Обучение модели: {params['model_type']}")
             trainer = ModelTrainer(
                 model_type=params['model_type'],
                 model_hyperparameters=params['model_params']
             )
             
-            metrics, feature_importance = trainer.train(
+            metrics, feature_importance, trainer_dropped_cols = trainer.train(
                 train_data, test_data, args.target,
                 output_path=None,
                 plot_learning_curves=False,
@@ -91,14 +82,20 @@ class MLPipelineCLI:
                 print("❌ Ошибка обучения модели")
                 return False
             
-            # Создаем имя модели
+            # Объединяем информацию об удаленных колонках
+            process_dropped_cols = preprocessor_states.get('dropped_columns', [])
+            all_dropped_cols = list(set(process_dropped_cols + trainer_dropped_cols))
+            preprocessor_states['dropped_columns'] = all_dropped_cols
+            
+            if all_dropped_cols:
+                print(f"🗑️ Удалены ID колонки: {all_dropped_cols}")
+            
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")  
             model_name = f"{Path(args.dataset).stem}_{params['model_type']}_{timestamp}"
             model_save_path = self.models_dir / model_name
             
             print(f"\n💾 Сохранение полного пайплайна...")
             
-            # Создаем метаданные полного пайплайна
             pipeline_metadata = {
                 'model_name': model_name,
                 'dataset': args.dataset,
@@ -112,22 +109,18 @@ class MLPipelineCLI:
                 'source': 'cli_chromosome'
             }
             
-            # Создаем и сохраняем ProductionPipeline
             production_pipeline = ProductionPipeline(
                 preprocessor_states=preprocessor_states,
                 model=trainer.model,
                 metadata=pipeline_metadata
             )
             
-            # Сохраняем полный пайплайн
             production_pipeline.save(str(model_save_path))
             
-            # Дополнительно сохраняем метаданные CLI для совместимости 
             metadata_path = self.models_dir / f"{model_name}_metadata.json"
             with open(metadata_path, 'w', encoding='utf-8') as f:
                 json.dump(pipeline_metadata, f, indent=2, ensure_ascii=False, default=str)
             
-            # Выводим основные метрики в консоль
             print(f"\n📊 Метрики качества модели:")
             print(f"   📈 AUPRC: {metrics.get('auprc', 0):.4f}")
             print(f"   🎯 ROC-AUC: {metrics.get('roc_auc', 0):.4f}")
@@ -152,7 +145,6 @@ class MLPipelineCLI:
             return False
     
     def run_ga(self, args):
-        """Запуск ГА с автосохранением лучшего результата"""
         print(f"🧬 Запуск генетического алгоритма")
         print(f"📊 Датасет: {args.train}")
         print(f"🎯 Целевая переменная: {args.target}")
@@ -160,7 +152,6 @@ class MLPipelineCLI:
         print(f"🔄 Поколения: {args.generations}")
         
         try:
-            # Создаем конфигурацию ГА
             ga_config = GAConfig(
                 train_path=args.train,
                 test_path=None,
@@ -175,7 +166,6 @@ class MLPipelineCLI:
             
             print(f"\n⚙️ Конфигурация: {ga_config}")
             
-            # Запускаем ГА
             print("\n🚀 Запуск оптимизации...")
             results = run_genetic_algorithm(ga_config)
             
@@ -190,15 +180,12 @@ class MLPipelineCLI:
             print(f"📈 Лучший фитнес: {best_fitness:.4f}")
             print(f"🧬 Лучшая хромосома: {best_chromosome}")
             
-            # Если требуется автосохранение
             if args.auto_save:
                 print(f"\n💾 Сохранение лучшей модели...")
                 
-                # Декодируем лучшую хромосому
                 decoded_info = decode_chromosome_full(best_chromosome, verbose=False)
                 params = decoded_info['pipeline_params']
                 
-                # Обрабатываем данные с лучшими параметрами
                 train_data, test_data, research_path, preprocessor_states = process_data(
                     args.train, None, args.target,
                     imputation_method=params['imputation_method'],
@@ -215,28 +202,33 @@ class MLPipelineCLI:
                     save_model_artifacts=False
                 )
                 
-                # Обучаем лучшую модель с помощью ModelTrainer
                 print(f"🚀 Обучение лучшей модели: {params['model_type']}")
                 trainer = ModelTrainer(
                     model_type=params['model_type'],
                     model_hyperparameters=params['model_params']
                 )
                 
-                metrics, feature_importance = trainer.train(
+                metrics, feature_importance, trainer_dropped_cols = trainer.train(
                     train_data, test_data, args.target,
                     output_path=None,
                     plot_learning_curves=False,
                     save_run_results=False
                 )
                 
-                # Создаем имя лучшей модели
+                # Объединяем информацию об удаленных колонках
+                process_dropped_cols = preprocessor_states.get('dropped_columns', [])
+                all_dropped_cols = list(set(process_dropped_cols + trainer_dropped_cols))
+                preprocessor_states['dropped_columns'] = all_dropped_cols
+                
+                if all_dropped_cols:
+                    print(f"🗑️ Удалены ID колонки: {all_dropped_cols}")
+                
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 model_name = f"{Path(args.train).stem}_GA_best_{timestamp}"
                 model_save_path = self.models_dir / model_name
                 
                 print(f"💾 Сохранение полного пайплайна лучшей модели...")
                 
-                # Создаем метаданные лучшей модели
                 ga_metadata = {
                     'model_name': model_name,
                     'dataset': args.train,
@@ -254,22 +246,18 @@ class MLPipelineCLI:
                     'source': 'genetic_algorithm'
                 }
                 
-                # Создаем и сохраняем ProductionPipeline
                 production_pipeline = ProductionPipeline(
                     preprocessor_states=preprocessor_states,
                     model=trainer.model,
                     metadata=ga_metadata
                 )
                 
-                # Сохраняем полный пайплайн
                 production_pipeline.save(str(model_save_path))
                 
-                # Дополнительно сохраняем метаданные CLI для совместимости
                 metadata_path = self.models_dir / f"{model_name}_metadata.json"
                 with open(metadata_path, 'w', encoding='utf-8') as f:
                     json.dump(ga_metadata, f, indent=2, ensure_ascii=False, default=str)
                 
-                # Выводим метрики лучшей модели в консоль
                 print(f"\n📊 Метрики лучшей модели:")
                 print(f"   📈 AUPRC: {metrics.get('auprc', 0):.4f}")
                 print(f"   🎯 ROC-AUC: {metrics.get('roc_auc', 0):.4f}")
@@ -291,17 +279,14 @@ class MLPipelineCLI:
             return False
     
     def predict(self, args):
-        """Применение сериализованной модели к новым данным"""
         print(f"🔮 Применение модели: {args.model}")
         print(f"📊 Данные: {args.data}")
         
         try:
-            # Ищем метаданные модели
             metadata_path = None
             if args.model.endswith('_metadata.json'):
                 metadata_path = Path(args.model)
             else:
-                # Ищем в директории models
                 metadata_path = self.models_dir / f"{args.model}_metadata.json"
                 if not metadata_path.exists():
                     metadata_path = self.models_dir / f"{args.model.replace('.pkl', '')}_metadata.json"
@@ -311,7 +296,6 @@ class MLPipelineCLI:
                 print(f"💡 Доступные модели можно посмотреть командой: list-models")
                 return False
             
-            # Загружаем метаданные
             print(f"📥 Загрузка метаданных: {metadata_path}")
             with open(metadata_path, 'r', encoding='utf-8') as f:
                 metadata = json.load(f)
@@ -320,14 +304,12 @@ class MLPipelineCLI:
             print(f"🎯 Цель: {metadata.get('target_column', 'unknown')}")
             print(f"🤖 Тип: {metadata.get('pipeline_config', {}).get('model_type', 'unknown')}")
             
-            # Загружаем данные
             print(f"📊 Загрузка данных: {args.data}")
             data = pd.read_csv(args.data)
             
             print(f"📋 Размер данных: {data.shape}")
             print(f"📊 Колонки: {list(data.columns)}")
             
-            # Анализируем структуру данных
             print(f"\n🔍 Анализ структуры данных...")
             target_column = metadata.get('target_column')
             expected_features = metadata.get('features', [])
@@ -335,7 +317,6 @@ class MLPipelineCLI:
             print(f"📊 Ожидаемые признаки ({len(expected_features)}): {expected_features[:5]}{'...' if len(expected_features) > 5 else ''}")
             print(f"📊 Полученные колонки ({len(data.columns)}): {list(data.columns)[:5]}{'...' if len(data.columns) > 5 else ''}")
             
-            # Проверяем совместимость
             missing_features = set(expected_features) - set(data.columns)
             if missing_features:
                 print(f"⚠️ Отсутствующие признаки: {list(missing_features)[:5]}{'...' if len(missing_features) > 5 else ''}")
@@ -344,10 +325,8 @@ class MLPipelineCLI:
             if extra_features:
                 print(f"ℹ️ Дополнительные колонки: {list(extra_features)[:5]}{'...' if len(extra_features) > 5 else ''}")
             
-            # Загружаем и применяем модель
             print(f"\n🔮 Загрузка и применение модели...")
             
-            # Ищем папку с моделью
             model_name = metadata.get('model_name')
             model_folder = self.models_dir / model_name
             
@@ -355,17 +334,14 @@ class MLPipelineCLI:
                 print(f"❌ Папка модели не найдена: {model_folder}")
                 return False
             
-            # Проверяем, есть ли полный пайплайн (ProductionPipeline)
             pipeline_metadata_path = model_folder / 'pipeline_metadata.json'
             
             if pipeline_metadata_path.exists():
                 print(f"🔧 Обнаружен полный пайплайн, загружаем ProductionPipeline...")
                 try:
-                    # Загружаем полный пайплайн
                     production_pipeline = ProductionPipeline.load(str(model_folder))
                     print(f"✅ Полный пайплайн успешно загружен")
                     
-                    # Применяем полный пайплайн (с предобработкой)
                     print(f"🔄 Применение полного пайплайна с предобработкой...")
                     results = production_pipeline.predict(data)
                     
@@ -373,7 +349,6 @@ class MLPipelineCLI:
                     print(f"📈 Результаты предсказаний:")
                     print(f"🔢 Количество записей: {len(results)}")
                     
-                    # Показываем первые несколько результатов
                     n_show = min(10, len(results))
                     for i in range(n_show):
                         pred = results.iloc[i]['prediction']
@@ -387,24 +362,19 @@ class MLPipelineCLI:
                     if len(results) > n_show:
                         print(f"  ... и еще {len(results) - n_show} записей")
                     
-                    # Определяем имя выходного файла
                     if args.output:
                         output_file = args.output
                     else:
-                        # Автоматически генерируем имя файла в папке results в корне проекта  
-                        project_root = Path.cwd()  # текущая рабочая директория
+                        project_root = Path.cwd()
                         results_dir = project_root / "results"
-                        
-                        # Создаем папку results если её нет
                         results_dir.mkdir(exist_ok=True)
                         
                         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                         data_path = Path(args.data)
-                        data_filename = data_path.stem  # Имя файла без расширения
+                        data_filename = data_path.stem
                         
                         output_file = results_dir / f"predictions_{data_filename}_{model_name}_{timestamp}.csv"
                     
-                    # Сохраняем результаты
                     results.to_csv(output_file, index=False)
                     
                     print(f"\n💾 Результаты сохранены: {output_file}")
@@ -416,7 +386,6 @@ class MLPipelineCLI:
                     print(f"❌ Ошибка загрузки полного пайплайна: {e}")
                     print(f"🔄 Переключаемся на загрузку только модели...")
             
-            # Fallback: загружаем только модель (старый метод)
             print(f"🔧 Загружаем только модель (без предобработки)...")
             
             # Проверяем наличие модели

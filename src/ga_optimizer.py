@@ -3,16 +3,12 @@ import numpy as np
 import pandas as pd 
 import matplotlib.pyplot as plt 
 
-# Imports from other project modules
 from pipeline_processor import (
     process_data, get_dataset_name, decode_and_log_chromosome,
     ChromosomeConfig, train_model
 )
 
 class GAConfig:
-    """
-    Конфигурация для генетического алгоритма
-    """
     def __init__(self, 
                  train_path=None,
                  test_path=None,
@@ -24,7 +20,6 @@ class GAConfig:
                  tournament_size=3,
                  generate_learning_curves=False):
         
-        # Обязательные параметры
         if train_path is None:
             raise ValueError("train_path is required")
         if target_column is None:
@@ -34,7 +29,6 @@ class GAConfig:
         self.test_path = test_path
         self.target_column = target_column
         
-        # Параметры GA (с дефолтными значениями)
         self.population_size = population_size
         self.num_generations = num_generations
         self.elitism_percent = elitism_percent
@@ -42,7 +36,6 @@ class GAConfig:
         self.tournament_size = tournament_size
         self.generate_learning_curves = generate_learning_curves
         
-        # Для совместимости со старыми тестами
         self.max_generations = num_generations
     
     def __str__(self):
@@ -51,18 +44,14 @@ class GAConfig:
                 f"population_size={self.population_size}, "
                 f"num_generations={self.num_generations})")
 
-# Получаем конфигурацию хромосом из нового модуля
 config = ChromosomeConfig()
 
-# Мапинги методов
 IMPUTATION_MAP = config.IMPUTATION_MAP
 OUTLIER_MAP = config.OUTLIER_MAP
 RESAMPLING_MAP = config.RESAMPLING_MAP
 ENCODING_MAP = config.ENCODING_MAP
 SCALING_MAP = config.SCALING_MAP
 MODEL_MAP = config.MODEL_MAP
-
-# Мапинги гиперпараметров
 HP_IMPUTATION_KNN_N_NEIGHBORS = config.HP_IMPUTATION_KNN_N_NEIGHBORS
 HP_IMPUTATION_MISSFOREST_N_ESTIMATORS = config.HP_IMPUTATION_MISSFOREST_N_ESTIMATORS
 HP_IMPUTATION_MISSFOREST_MAX_ITER = config.HP_IMPUTATION_MISSFOREST_MAX_ITER
@@ -107,16 +96,14 @@ HP_MODEL_NN_DROPOUT = config.HP_MODEL_NN_DROPOUT
 HP_MODEL_NN_LR = config.HP_MODEL_NN_LR
 HP_MODEL_NN_BATCH_SIZE = config.HP_MODEL_NN_BATCH_SIZE
 
-# --- GA Parameters ---
 POPULATION_SIZE = 10  
 NUM_GENERATIONS = 8
-MAX_GENERATIONS = NUM_GENERATIONS  # Alias для совместимости с тестами
+MAX_GENERATIONS = NUM_GENERATIONS
 ELITISM_PERCENT = 0.25 
 MUTATION_RATE = 0.1   
 TOURNAMENT_SIZE = 3
 
-# --- Dataset Parameters ---
-TRAIN_PATH = "../datasets/diabetes.csv"  # Относительный путь из папки src
+TRAIN_PATH = "../datasets/diabetes.csv"
 TARGET_COLUMN = "Outcome"  
 
 
@@ -152,22 +139,13 @@ if len(GENE_CHOICES_COUNT) != 20:
     raise ValueError(f"GENE_CHOICES_COUNT should have 20 elements, but has {len(GENE_CHOICES_COUNT)}")
 
 def initialize_individual():
-    """Initializes a single random 20-gene chromosome."""
     individual = [np.random.randint(0, max_val) if max_val > 0 else 0 for max_val in GENE_CHOICES_COUNT]
     return individual
 
 def initialize_population(pop_size):
-    """Initializes a population of random chromosomes."""
     return [initialize_individual() for _ in range(pop_size)]
 
 def select_parent_tournament(population_with_fitness, tournament_size):
-    """Selects a single parent using tournament selection.
-    Args:
-        population_with_fitness: List of tuples (chromosome, fitness_score).
-        tournament_size: Number of individuals to participate in the tournament.
-    Returns:
-        A single chromosome (the winner of the tournament).
-    """
     if not population_with_fitness:
         return initialize_individual()
 
@@ -175,26 +153,17 @@ def select_parent_tournament(population_with_fitness, tournament_size):
     if actual_tournament_size == 0:
         return initialize_individual()
 
-    # Select indices for the tournament
     tournament_indices = np.random.choice(len(population_with_fitness), size=actual_tournament_size, replace=False)
     tournament_contestants = [population_with_fitness[i] for i in tournament_indices]
     
-    # Sort by fitness (descending) and pick the best (highest fitness)
     winner = max(tournament_contestants, key=lambda x: x[1])
-    return winner[0] # Return the chromosome of the winner
+    return winner[0]
 
 def crossover(parent1, parent2):
-    """Performs single-point crossover between two parents.
-    Args:
-        parent1: The first parent chromosome (list of genes).
-        parent2: The second parent chromosome (list of genes).
-    Returns:
-        Two offspring chromosomes (tuple of two lists of genes).
-    """
     if len(parent1) != len(parent2):
         raise ValueError("Parents must have the same chromosome length for crossover.")
-    if len(parent1) < 2: # Crossover point needs at least 1 gene on each side
-        return list(parent1), list(parent2) # No crossover if too short
+    if len(parent1) < 2:
+        return list(parent1), list(parent2)
 
     c_point = np.random.randint(1, len(parent1)) 
     
@@ -276,7 +245,7 @@ def evaluate_chromosome(chromosome_genes, train_path_ga, test_path_ga, target_co
             return -1.0, model_type_for_return # Return model_type even on processing failure
             
         # print(f"[GA - Chromosome: {chromosome_genes}] Calling train_model for model: {current_model_type}...") # Reduced verbosity
-        metrics_output, ft_importance_output = train_model(
+        metrics_output, ft_importance_output, trainer_dropped_cols = train_model(
             processed_train_data_df, 
             processed_test_data_df,  
             target_column_ga,

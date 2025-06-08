@@ -20,16 +20,9 @@ try:
     from gensim.models import FastText
     GENSIM_AVAILABLE = True
 except ImportError as e:
-
-    pass # Allow to run without gensim if not used
+    pass
 
 class DataPreprocessor:
-    """
-    Class for data preprocessing including:
-    - Missing value imputation
-    - Categorical encoding
-    - Feature type handling
-    """
     def __init__(self):
         self.encoders = {}
         self.cat_columns = []
@@ -46,12 +39,6 @@ class DataPreprocessor:
         self.imputed_modes = {}
         
     def get_preprocessor_state(self):
-        """
-        Извлекает все состояния препроцессора для сериализации
-        
-        Returns:
-            dict: Словарь с состояниями всех компонентов
-        """
         return {
             'encoders': self.encoders,
             'cat_columns': self.cat_columns,
@@ -69,12 +56,6 @@ class DataPreprocessor:
         }
     
     def set_preprocessor_state(self, state):
-        """
-        Восстанавливает состояние препроцессора из сериализованных данных
-        
-        Args:
-            state (dict): Словарь с состояниями компонентов
-        """
         self.encoders = state.get('encoders', {})
         self.cat_columns = state.get('cat_columns', [])
         self.numeric_columns = state.get('numeric_columns', [])
@@ -90,12 +71,10 @@ class DataPreprocessor:
         self.imputed_modes = state.get('imputed_modes', {})
 
     def _get_column_types(self, data):
-        """Identify numeric and categorical columns in the dataset."""
         self.numeric_columns = data.select_dtypes(include=np.number).columns.tolist()
         self.cat_columns = data.select_dtypes(include=['object', 'category', 'string']).columns.tolist()
 
     def _impute_median(self, data):
-        """Impute missing values in numeric columns using the median."""
         data = data.copy()
         numeric_cols_present = [col for col in self.numeric_columns if col in data.columns]
 
@@ -118,7 +97,6 @@ class DataPreprocessor:
         return data
 
     def impute_knn(self, data, n_neighbors=5):
-        """Impute missing values in numeric columns using KNN."""
         numeric_cols = data.select_dtypes(include=["number"]).columns
         if not numeric_cols.empty:
             imputer = KNNImputer(n_neighbors=n_neighbors)
@@ -132,7 +110,6 @@ class DataPreprocessor:
         return data
 
     def impute_categorical(self, data):
-        """Impute missing values in categorical columns using mode."""
         cat_cols_present = [col for col in self.cat_columns if col in data.columns]
         for col in cat_cols_present:
             data[col] = data[col].astype(str)
@@ -148,9 +125,6 @@ class DataPreprocessor:
         return data
 
     def impute_missforest(self, data, max_iter=10, n_estimators=100, random_state=42):
-        """
-        Impute missing values using MissForest or IterativeImputer as fallback.
-        """
         original_columns = data.columns
         if self.cat_columns:
             categorical_columns = [col for col in self.cat_columns if col in data.columns]

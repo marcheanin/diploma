@@ -1,7 +1,3 @@
-"""
-Класс готового к эксплуатации ML-пайплайна
-"""
-
 import os
 import json
 import pickle
@@ -17,24 +13,8 @@ except ImportError:
 
 
 class ProductionPipeline:
-    """
-    Готовый к эксплуатации ML-пайплайн
-    
-    Содержит:
-    - Обученные препроцессоры (с состоянием)
-    - Обученную модель
-    - Метаданные о процессе обучения
-    """
     
     def __init__(self, preprocessor_states: Dict[str, Any], model: Any, metadata: Dict[str, Any]):
-        """
-        Инициализация production пайплайна
-        
-        Args:
-            preprocessor_states: Словарь с состояниями всех препроцессоров
-            model: Обученная модель
-            metadata: Метаданные о пайплайне
-        """
         self.preprocessor_states = preprocessor_states
         self.model = model
         self.metadata = metadata
@@ -42,39 +22,30 @@ class ProductionPipeline:
         print(f"[ProductionPipeline] Создан пайплайн для модели: {metadata.get('model_type', 'unknown')}")
     
     def preprocess(self, raw_data: pd.DataFrame) -> pd.DataFrame:
-        """
-        Применяет ту же предобработку, что была при обучении
-        
-        Args:
-            raw_data: Необработанные данные
-            
-        Returns:
-            Предобработанные данные (только признаки, без целевой переменной)
-        """
         print(f"[ProductionPipeline] Предобработка данных (shape: {raw_data.shape})")
         
         data = raw_data.copy()
         
-        # Удаляем целевую колонку если она присутствует (для предсказания)
         target_col = self.metadata.get('target_column')
         if target_col and target_col in data.columns:
             data = data.drop(columns=[target_col])
             print(f"[ProductionPipeline] Удалена целевая колонка '{target_col}' для предсказания")
         
-        # Применяем предобработку в том же порядке, что при обучении
-        # Порядок важен! Он должен соответствовать порядку в pipeline_processor.py
+        dropped_columns = self.preprocessor_states.get('dropped_columns', [])
+        if dropped_columns:
+            cols_to_drop = [col for col in dropped_columns if col in data.columns]
+            if cols_to_drop:
+                data = data.drop(columns=cols_to_drop)
+                print(f"[ProductionPipeline] Удалены ID колонки: {cols_to_drop}")
         
-        # 1. Импутация (если была применена)
         if 'preprocessor' in self.preprocessor_states:
             data = self._apply_imputation(data)
             print(f"[ProductionPipeline] Импутация применена")
         
-        # 2. Кодирование (если было применено)
         if 'preprocessor' in self.preprocessor_states:
             data = self._apply_encoding(data)
             print(f"[ProductionPipeline] Кодирование применено")
         
-        # 3. Масштабирование (если было применено)
         if 'scaler' in self.preprocessor_states:
             data = self._apply_scaling(data)
             print(f"[ProductionPipeline] Масштабирование применено")
@@ -83,21 +54,10 @@ class ProductionPipeline:
         return data
     
     def predict(self, raw_data: pd.DataFrame) -> pd.DataFrame:
-        """
-        Основная функция предсказания
-        
-        Args:
-            raw_data: Необработанные данные
-            
-        Returns:
-            DataFrame с результатами предсказаний
-        """
         print(f"[ProductionPipeline] Начало предсказания для {len(raw_data)} записей")
         
-        # Предобработка
         processed_data = self.preprocess(raw_data)
         
-        # Предсказание
         try:
             if hasattr(self.model, 'predict_proba'):
                 probabilities = self.model.predict_proba(processed_data)
@@ -115,17 +75,14 @@ class ProductionPipeline:
             raise
     
     def _apply_imputation(self, data: pd.DataFrame) -> pd.DataFrame:
-        """Применяет сохраненные параметры импутации"""
         if 'preprocessor' not in self.preprocessor_states:
             print(f"[ProductionPipeline] Пропуск импутации - состояние не найдено")
             return data
             
-        # Создаем новый экземпляр DataPreprocessor и восстанавливаем его состояние
         from preprocessing.data_preprocessor import DataPreprocessor
         preprocessor = DataPreprocessor()
         preprocessor.set_preprocessor_state(self.preprocessor_states['preprocessor'])
         
-        # Применяем импутацию с сохраненными параметрами
         config = self.preprocessor_states.get('processing_config', {})
         method = config.get('imputation_method', 'knn')
         params = config.get('imputation_params', {})
@@ -134,17 +91,14 @@ class ProductionPipeline:
         return preprocessor.impute(data, method=method, **params)
     
     def _apply_encoding(self, data: pd.DataFrame) -> pd.DataFrame:
-        """Применяет сохраненные энкодеры"""
         if 'preprocessor' not in self.preprocessor_states:
             print(f"[ProductionPipeline] Пропуск кодирования - состояние не найдено")
             return data
             
-        # Создаем новый экземпляр DataPreprocessor и восстанавливаем его состояние
         from preprocessing.data_preprocessor import DataPreprocessor
         preprocessor = DataPreprocessor()
         preprocessor.set_preprocessor_state(self.preprocessor_states['preprocessor'])
         
-        # Применяем кодирование с сохраненными параметрами
         config = self.preprocessor_states.get('processing_config', {})
         method = config.get('encoding_method', 'label')
         params = config.get('encoding_params', {})
@@ -154,7 +108,6 @@ class ProductionPipeline:
         return preprocessor.encode(data, method=method, target_col=target_col, **params)
     
     def _apply_scaling(self, data: pd.DataFrame) -> pd.DataFrame:
-        """Применяет сохраненные скейлеры"""
         scaler = self.preprocessor_states.get('scaler')
         if scaler is None:
             print(f"[ProductionPipeline] Пропуск масштабирования - скейлер не найден")
@@ -162,7 +115,6 @@ class ProductionPipeline:
             
         target_col = self.metadata.get('target_column')
         
-        # Отделяем признаки от целевой переменной
         if target_col in data.columns:
             X_features = data.drop(columns=[target_col])
             y_target = data[target_col]
@@ -173,11 +125,9 @@ class ProductionPipeline:
         print(f"[ProductionPipeline] Масштабирование: {self.preprocessor_states.get('scaler_method', 'unknown')}")
         
         try:
-            # Применяем скейлер
             scaled_features = scaler.transform(X_features)
             scaled_df = pd.DataFrame(scaled_features, columns=X_features.columns, index=X_features.index)
             
-            # Объединяем обратно с целевой переменной если она была
             if y_target is not None:
                 return pd.concat([scaled_df, y_target], axis=1)
             else:

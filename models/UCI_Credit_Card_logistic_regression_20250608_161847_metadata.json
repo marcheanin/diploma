@@ -1,0 +1,126 @@
+{
+  "model_name": "UCI_Credit_Card_logistic_regression_20250608_161847",
+  "dataset": "datasets/UCI_Credit_Card.csv",
+  "target_column": "default.payment.next.month",
+  "features": [
+    "LIMIT_BAL",
+    "SEX",
+    "EDUCATION",
+    "MARRIAGE",
+    "AGE",
+    "PAY_0",
+    "PAY_2",
+    "PAY_3",
+    "PAY_4",
+    "PAY_5",
+    "PAY_6",
+    "BILL_AMT1",
+    "BILL_AMT2",
+    "BILL_AMT3",
+    "BILL_AMT4",
+    "BILL_AMT5",
+    "BILL_AMT6",
+    "PAY_AMT1",
+    "PAY_AMT2",
+    "PAY_AMT3",
+    "PAY_AMT4",
+    "PAY_AMT5",
+    "PAY_AMT6"
+  ],
+  "chromosome": [
+    1,
+    2,
+    0,
+    1,
+    1,
+    2,
+    0,
+    1,
+    0,
+    0,
+    1,
+    1,
+    1,
+    0,
+    0,
+    0,
+    2,
+    3,
+    1,
+    0
+  ],
+  "pipeline_config": {
+    "imputation_method": "median",
+    "imputation_params": {},
+    "outlier_method": "isolation_forest",
+    "outlier_params": {
+      "n_estimators": 50,
+      "contamination": 0.025
+    },
+    "resampling_method": "none",
+    "resampling_params": {},
+    "encoding_method": "onehot",
+    "encoding_params": {
+      "max_cardinality_threshold": 20,
+      "drop": "first"
+    },
+    "scaling_method": "standard",
+    "scaling_params": {
+      "with_mean": true,
+      "with_std": true
+    },
+    "model_type": "logistic_regression",
+    "model_params": {
+      "C": 0.1,
+      "solver_penalty_config": {
+        "penalty": "l1",
+        "solver": "saga",
+        "l1_ratio": null
+      },
+      "class_weight": "balanced",
+      "max_iter": 100
+    }
+  },
+  "metrics": {
+    "evaluation_set_description": "test_set (shape: (6000, 23))",
+    "accuracy": 0.687,
+    "f1_score": 0.4760044642857143,
+    "f1_score_weighted": 0.71101779030588,
+    "f1_score_micro": 0.687,
+    "f1_score_macro": 0.6264290382265074,
+    "precision": 0.3756054601497138,
+    "recall": 0.6496572734196496,
+    "roc_auc": 0.7301284312672459,
+    "auprc": 0.48082345236142604,
+    "classification_report": {
+      "0": {
+        "precision": 0.8766425315097881,
+        "recall": 0.6974610625133347,
+        "f1-score": 0.7768536121673004,
+        "support": 4687.0
+      },
+      "1": {
+        "precision": 0.3756054601497138,
+        "recall": 0.6496572734196496,
+        "f1-score": 0.4760044642857143,
+        "support": 1313.0
+      },
+      "accuracy": 0.687,
+      "macro avg": {
+        "precision": 0.626123995829751,
+        "recall": 0.6735591679664922,
+        "f1-score": 0.6264290382265074,
+        "support": 6000.0
+      },
+      "weighted avg": {
+        "precision": 0.7669989190604918,
+        "recall": 0.687,
+        "f1-score": 0.71101779030588,
+        "support": 6000.0
+      }
+    }
+  },
+  "model_type": "logistic_regression",
+  "created_at": "20250608_161847",
+  "source": "cli_chromosome"
+}

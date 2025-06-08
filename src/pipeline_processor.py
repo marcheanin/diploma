@@ -11,16 +11,8 @@ from preprocessing.resampler import Resampler
 from modeling.model_trainer import ModelTrainer
 
 
-# ==========================================
-# CHROMOSOME CONFIGURATION AND DECODING
-# ==========================================
-
 class ChromosomeConfig:
-    """
-    Конфигурация для декодирования 20-генных хромосом в параметры ML-пайплайна
-    """
     
-    # --- Method Maps ---
     IMPUTATION_MAP = {0: 'knn', 1: 'median', 2: 'missforest'}
     OUTLIER_MAP = {0: 'none', 1: 'isolation_forest', 2: 'iqr'}
     RESAMPLING_MAP = {0: 'none', 1: 'oversample', 2: 'smote', 3: 'adasyn'}
@@ -28,25 +20,20 @@ class ChromosomeConfig:
     SCALING_MAP = {0: 'none', 1: 'standard', 2: 'minmax'}
     MODEL_MAP = {0: 'logistic_regression', 1: 'random_forest', 2: 'gradient_boosting', 3: 'neural_network'}
     
-    # --- Hyperparameter Maps ---
-    # Imputation HP Maps
     HP_IMPUTATION_KNN_N_NEIGHBORS = {0: 3, 1: 5, 2: 7, 3: 10, 4: 15}
     HP_IMPUTATION_MISSFOREST_N_ESTIMATORS = {0: 30, 1: 50, 2: 100, 3: 150, 4: 200}
     HP_IMPUTATION_MISSFOREST_MAX_ITER = {0: 5, 1: 10, 2: 15, 3: 20}
     
-    # Outlier HP Maps
     HP_OUTLIER_IF_N_ESTIMATORS = {0: 30, 1: 50, 2: 100, 3: 150, 4: 200}
     HP_OUTLIER_IF_CONTAMINATION = {0: 'auto', 1: 0.01, 2: 0.025, 3: 0.05, 4: 0.1, 5: 0.15}
     HP_OUTLIER_IQR_MULTIPLIER = {0: 1.5, 1: 2.0, 2: 2.5, 3: 3.0}
     
-    # Resampling HP Maps
     HP_RESAMPLING_ROS_STRATEGY = {0: 'auto', 1: 'minority', 2: 0.5, 3: 0.6, 4: 0.75}
     HP_RESAMPLING_SMOTE_K_NEIGHBORS = {0: 3, 1: 5, 2: 7, 3: 9}
     HP_RESAMPLING_SMOTE_STRATEGY = {0: 'auto', 1: 'minority', 2: 0.5, 3: 0.6, 4: 0.75}
     HP_RESAMPLING_ADASYN_N_NEIGHBORS = {0: 3, 1: 5, 2: 7, 3: 9}
     HP_RESAMPLING_ADASYN_STRATEGY = {0: 'auto', 1: 'minority', 2: 0.5, 3: 0.6, 4: 0.75}
     
-    # Encoding HP Maps
     HP_ENCODING_ONEHOT_MAX_CARDINALITY = {0: 10, 1: 20, 2: 50, 3: 100}
     HP_ENCODING_ONEHOT_DROP = {0: None, 1: 'first'}
     HP_ENCODING_LSA_N_COMPONENTS = {0: 5, 1: 10, 2: 25, 3: 50, 4: 75}
@@ -54,11 +41,9 @@ class ChromosomeConfig:
     HP_ENCODING_W2V_DIM = {0: 25, 1: 50, 2: 75, 3: 100, 4: 150}
     HP_ENCODING_W2V_WINDOW = {0: 1, 1: 2, 2: 3, 3: 5, 4: 7}
     
-    # Scaling HP Maps
     HP_SCALING_STANDARD_WITH_MEAN = {0: True, 1: False}
     HP_SCALING_STANDARD_WITH_STD = {0: True, 1: False}
     
-    # Model HP Maps
     HP_MODEL_LOGREG_C = {0: 0.001, 1: 0.01, 2: 0.1, 3: 1.0, 4: 10.0, 5: 100.0}
     HP_MODEL_LOGREG_PENALTY_SOLVER = {
         0: {'penalty': 'l2', 'solver': 'lbfgs', 'l1_ratio': None}, 
@@ -90,7 +75,6 @@ class ChromosomeConfig:
     HP_MODEL_NN_LR = {0: 0.0001, 1: 0.0005, 2: 0.001, 3: 0.005, 4: 0.01, 5: 0.05}
     HP_MODEL_NN_BATCH_SIZE = {0: 16, 1: 32, 2: 64, 3: 128}
     
-    # Gene descriptions for debugging
     GENE_DESCRIPTIONS = [
         "Imputation Method", "Imputation HP1", "Imputation HP2",
         "Outlier Method", "Outlier HP1", "Outlier HP2",
@@ -102,55 +86,41 @@ class ChromosomeConfig:
     
     @classmethod
     def get_gene_ranges(cls):
-        """Возвращает количество вариантов для каждого гена (для ГА)"""
         return [
-            len(cls.IMPUTATION_MAP), # Gene 0
-            max(len(cls.HP_IMPUTATION_KNN_N_NEIGHBORS), len(cls.HP_IMPUTATION_MISSFOREST_N_ESTIMATORS)), # Gene 1
-            len(cls.HP_IMPUTATION_MISSFOREST_MAX_ITER), # Gene 2
+            len(cls.IMPUTATION_MAP),
+            max(len(cls.HP_IMPUTATION_KNN_N_NEIGHBORS), len(cls.HP_IMPUTATION_MISSFOREST_N_ESTIMATORS)),
+            len(cls.HP_IMPUTATION_MISSFOREST_MAX_ITER),
             
-            len(cls.OUTLIER_MAP), # Gene 3
-            max(len(cls.HP_OUTLIER_IF_N_ESTIMATORS), len(cls.HP_OUTLIER_IQR_MULTIPLIER)), # Gene 4
-            len(cls.HP_OUTLIER_IF_CONTAMINATION), # Gene 5
+            len(cls.OUTLIER_MAP),
+            max(len(cls.HP_OUTLIER_IF_N_ESTIMATORS), len(cls.HP_OUTLIER_IQR_MULTIPLIER)),
+            len(cls.HP_OUTLIER_IF_CONTAMINATION),
             
-            len(cls.RESAMPLING_MAP), # Gene 6
-            max(len(cls.HP_RESAMPLING_ROS_STRATEGY), len(cls.HP_RESAMPLING_SMOTE_K_NEIGHBORS), len(cls.HP_RESAMPLING_ADASYN_N_NEIGHBORS)), # Gene 7
-            max(len(cls.HP_RESAMPLING_SMOTE_STRATEGY), len(cls.HP_RESAMPLING_ADASYN_STRATEGY)), # Gene 8
+            len(cls.RESAMPLING_MAP),
+            max(len(cls.HP_RESAMPLING_ROS_STRATEGY), len(cls.HP_RESAMPLING_SMOTE_K_NEIGHBORS), len(cls.HP_RESAMPLING_ADASYN_N_NEIGHBORS)),
+            max(len(cls.HP_RESAMPLING_SMOTE_STRATEGY), len(cls.HP_RESAMPLING_ADASYN_STRATEGY)),
             
-            len(cls.ENCODING_MAP), # Gene 9
-            max(len(cls.HP_ENCODING_ONEHOT_MAX_CARDINALITY), len(cls.HP_ENCODING_LSA_N_COMPONENTS), len(cls.HP_ENCODING_W2V_DIM)), # Gene 10
-            max(len(cls.HP_ENCODING_ONEHOT_DROP), len(cls.HP_ENCODING_LSA_NGRAM_MAX), len(cls.HP_ENCODING_W2V_WINDOW)), # Gene 11
+            len(cls.ENCODING_MAP),
+            max(len(cls.HP_ENCODING_ONEHOT_MAX_CARDINALITY), len(cls.HP_ENCODING_LSA_N_COMPONENTS), len(cls.HP_ENCODING_W2V_DIM)),
+            max(len(cls.HP_ENCODING_ONEHOT_DROP), len(cls.HP_ENCODING_LSA_NGRAM_MAX), len(cls.HP_ENCODING_W2V_WINDOW)),
             
-            len(cls.SCALING_MAP), # Gene 12
-            len(cls.HP_SCALING_STANDARD_WITH_MEAN), # Gene 13
-            len(cls.HP_SCALING_STANDARD_WITH_STD), # Gene 14
+            len(cls.SCALING_MAP),
+            len(cls.HP_SCALING_STANDARD_WITH_MEAN),
+            len(cls.HP_SCALING_STANDARD_WITH_STD),
             
-            len(cls.MODEL_MAP), # Gene 15
-            max(len(cls.HP_MODEL_LOGREG_C), len(cls.HP_MODEL_RF_N_ESTIMATORS), len(cls.HP_MODEL_GB_N_ESTIMATORS), len(cls.HP_MODEL_NN_LAYERS)), # Gene 16
-            max(len(cls.HP_MODEL_LOGREG_PENALTY_SOLVER), len(cls.HP_MODEL_RF_MAX_DEPTH), len(cls.HP_MODEL_GB_LEARNING_RATE), len(cls.HP_MODEL_NN_DROPOUT)), # Gene 17
-            max(len(cls.HP_MODEL_LOGREG_CLASS_WEIGHT), len(cls.HP_MODEL_RF_MIN_SAMPLES_SPLIT), len(cls.HP_MODEL_GB_MAX_DEPTH), len(cls.HP_MODEL_NN_LR)), # Gene 18
-            max(len(cls.HP_MODEL_LOGREG_MAX_ITER), len(cls.HP_MODEL_RF_MIN_SAMPLES_LEAF), len(cls.HP_MODEL_GB_SUBSAMPLE), len(cls.HP_MODEL_NN_BATCH_SIZE)) # Gene 19
+            len(cls.MODEL_MAP),
+            max(len(cls.HP_MODEL_LOGREG_C), len(cls.HP_MODEL_RF_N_ESTIMATORS), len(cls.HP_MODEL_GB_N_ESTIMATORS), len(cls.HP_MODEL_NN_LAYERS)),
+            max(len(cls.HP_MODEL_LOGREG_PENALTY_SOLVER), len(cls.HP_MODEL_RF_MAX_DEPTH), len(cls.HP_MODEL_GB_LEARNING_RATE), len(cls.HP_MODEL_NN_DROPOUT)),
+            max(len(cls.HP_MODEL_LOGREG_CLASS_WEIGHT), len(cls.HP_MODEL_RF_MIN_SAMPLES_SPLIT), len(cls.HP_MODEL_GB_MAX_DEPTH), len(cls.HP_MODEL_NN_LR)),
+            max(len(cls.HP_MODEL_LOGREG_MAX_ITER), len(cls.HP_MODEL_RF_MIN_SAMPLES_LEAF), len(cls.HP_MODEL_GB_SUBSAMPLE), len(cls.HP_MODEL_NN_BATCH_SIZE))
         ]
 
 
 class ChromosomeDecoder:
-    """
-    Декодировщик хромосом в параметры ML-пайплайна
-    """
     
     def __init__(self):
         self.config = ChromosomeConfig()
     
     def decode_chromosome(self, chromosome, verbose=True):
-        """
-        Декодирует 20-генную хромосому в параметры пайплайна
-        
-        Args:
-            chromosome: Список из 20 генов
-            verbose: Выводить детали декодирования
-            
-        Returns:
-            Dict с параметрами пайплайна или None при ошибке
-        """
         if len(chromosome) != 20:
             print(f"[ChromosomeDecoder] Ошибка: хромосома должна содержать 20 генов, получено {len(chromosome)}")
             return None
@@ -164,7 +134,6 @@ class ChromosomeDecoder:
             'pipeline_params': {}
         }
         
-        # Декодируем каждый этап пайплайна
         self._decode_imputation(chromosome, decoded_info, verbose)
         self._decode_outlier_removal(chromosome, decoded_info, verbose)
         self._decode_resampling(chromosome, decoded_info, verbose)
@@ -178,11 +147,9 @@ class ChromosomeDecoder:
         return decoded_info
     
     def _get_hp_value(self, gene_val, hp_map):
-        """Безопасное получение значения гиперпараметра"""
         return hp_map.get(gene_val)
     
     def _decode_imputation(self, chromosome, decoded_info, verbose):
-        """Декодирует гены импутации (0, 1, 2)"""
         method_idx, hp1_idx, hp2_idx = chromosome[0], chromosome[1], chromosome[2]
         method = self.config.IMPUTATION_MAP.get(method_idx, "unknown")
         
@@ -614,6 +581,7 @@ def process_data(train_path, test_path, target_column,
         'preprocessor': preprocessor.get_preprocessor_state(),
         'scaler': scaler_instance,
         'scaler_method': scaling_method,
+        'dropped_columns': potential_id_columns_process,  # Сохраняем информацию об удаленных колонках
         'processing_config': {
             'imputation_method': imputation_method,
             'imputation_params': imputation_params,
@@ -671,7 +639,7 @@ def train_model(train_data_input, test_data_input, target_column, research_path,
             # print(f"Loaded training data from path: {train_data_input}")
         except Exception as e:
             print(f"Error loading training data from path {train_data_input}: {e}")
-            return None, None # Cannot proceed without training data
+            return None, None, None # Cannot proceed without training data
     
     current_test_data = test_data_input
     if isinstance(test_data_input, str):
@@ -691,7 +659,7 @@ def train_model(train_data_input, test_data_input, target_column, research_path,
     # Create ModelTrainer instance
     trainer = ModelTrainer(model_type=model_type, model_hyperparameters=model_hyperparameters, random_state=42)
     
-    metrics, feature_importance = trainer.train(
+    metrics, feature_importance, trainer_dropped_cols = trainer.train(
         current_train_data, 
         current_test_data, 
         target_column,
@@ -699,4 +667,4 @@ def train_model(train_data_input, test_data_input, target_column, research_path,
         plot_learning_curves=plot_learning_curves,
         save_run_results=save_run_results # Pass the flag through
     )    
-    return metrics, feature_importance
+    return metrics, feature_importance, trainer_dropped_cols

@@ -17,32 +17,19 @@ from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.regularizers import l1_l2
 
 class ModelTrainer:
-    """
-    Class for training and evaluating machine learning models.
-    """
+    
     def __init__(self, model_type='random_forest', model_hyperparameters=None, random_state=42, validation_size=0.2):
-        """
-        Initialize ModelTrainer.
-        
-        Args:
-            model_type: str, type of model to use ('random_forest', 'logistic_regression', 'gradient_boosting', 'neural_network')
-            random_state: int, random state for reproducibility
-            validation_size: float, size of validation split when test has no target
-        """
         self.model_type = model_type
         self.random_state = random_state
         self.validation_size = validation_size
         self.model = None
-        self.history = None # For Keras model training history
+        self.history = None
         self.model_hyperparameters = model_hyperparameters if model_hyperparameters is not None else {}
-        # print(f"ModelTrainer initialized for {self.model_type} with HPs: {self.model_hyperparameters}")
         
-        # Set random seed for TensorFlow/Keras for reproducibility if using it
         if 'tensorflow' in globals() and self.model_type == 'neural_network':
             globals()['tensorflow'].random.set_seed(self.random_state)
         
     def plot_learning_curves(self, X, y, output_path):
-        # This method is for scikit-learn models
         train_sizes, train_scores, test_scores = learning_curve(
             self.model, X, y,
             cv=5,
@@ -73,7 +60,7 @@ class ModelTrainer:
         plt.close()
         
         return {
-            'train_sizes': train_sizes.tolist(), # Convert to list for JSON serialization
+            'train_sizes': train_sizes.tolist(),
             'train_scores': {
                 'mean': train_mean.tolist(),
                 'std': train_std.tolist()
@@ -143,7 +130,7 @@ class ModelTrainer:
     def train(self, train_data, test_data, target_column, output_path=None, plot_learning_curves=True, save_run_results=True): # Added save_run_results
         if train_data is None or train_data.empty:
             print("Error: Training data is None or empty. Aborting training.")
-            return None, None
+            return None, None, None
 
         _train_data = train_data.copy()
         _test_data = test_data.copy() if test_data is not None else pd.DataFrame()
@@ -474,7 +461,7 @@ class ModelTrainer:
                     f.write("\nFeature Importances:\n")
                     f.write(feature_importance_df.to_string())
 
-        return metrics, feature_importance_df
+        return metrics, feature_importance_df, potential_id_cols
         
     def predict(self, X):
         """

@@ -97,7 +97,7 @@ def main():
             print(f"[Test Run - {name}] Data processing completed. Processed train: {processed_train_path}")
             print(f"\n[Test Run - {name}] Calling train_model for model: {decoded_params['model_type']}...")
             
-            metrics_output, ft_importance_output = train_model(
+            metrics_output, ft_importance_output, trainer_dropped_cols = train_model(
                 processed_train_path, processed_test_path, target_column,
                 research_path=research_base_path, 
                 model_type=decoded_params['model_type'],
