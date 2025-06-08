@@ -10,6 +10,7 @@ import json
 import numpy as np
 from pathlib import Path
 from datetime import datetime
+import pandas as pd
 
 # Добавляем текущую директорию в путь
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -18,6 +19,7 @@ from ga_optimizer import GAConfig, run_genetic_algorithm
 from pipeline_processor import decode_chromosome_full, process_data, train_model
 from deployment.production_pipeline import ProductionPipeline
 from deployment.model_serializer import UniversalModelSerializer
+from modeling.model_trainer import ModelTrainer
 
 
 class MLPipelineCLI:
@@ -33,117 +35,101 @@ class MLPipelineCLI:
         self.results_dir.mkdir(exist_ok=True)
         
     def run_chromosome(self, args):
-        """Запуск конкретной хромосомы с сериализацией"""
-        print(f"🧬 Запуск хромосомы: {args.chromosome}")
+        """Декодирование хромосомы, обучение и сохранение модели"""
+        print(f"🧬 Декодирование хромосомы: {args.chromosome}")
         print(f"📊 Датасет: {args.dataset}")
         print(f"🎯 Целевая переменная: {args.target}")
         
         try:
-            # Парсим хромосому
-            chromosome = [int(x) for x in args.chromosome.split(',')]
-            if len(chromosome) != 20:
-                raise ValueError(f"Хромосома должна содержать 20 генов, получено {len(chromosome)}")
-            
             # Декодируем хромосому
-            print("\n📋 Декодирование хромосомы...")
+            chromosome = [int(x.strip()) for x in args.chromosome.split(',')]
+            print(f"🔍 Хромосома: {chromosome}")
+            
             decoded_info = decode_chromosome_full(chromosome, verbose=True)
-            
-            if not decoded_info:
-                print("❌ Ошибка декодирования хромосомы")
-                return False
-            
             params = decoded_info['pipeline_params']
             
+            print(f"\n⚙️ Параметры пайплайна:")
+            for key, value in params.items():
+                print(f"  {key}: {value}")
+            
             # Обрабатываем данные
-            print("\n⚙️ Обработка данных...")
+            print(f"\n🔄 Обработка данных...")
             train_data, test_data, research_path = process_data(
                 args.dataset, None, args.target,
                 imputation_method=params['imputation_method'],
                 imputation_params=params['imputation_params'],
                 outlier_method=params['outlier_method'],
                 outlier_params=params['outlier_params'],
-                encoding_method=params['encoding_method'], 
+                encoding_method=params['encoding_method'],
                 encoding_params=params['encoding_params'],
                 resampling_method=params['resampling_method'],
                 resampling_params=params['resampling_params'],
                 scaling_method=params['scaling_method'],
                 scaling_params=params['scaling_params'],
-                save_processed_data=False,  # Не сохраняем промежуточные файлы
-                save_model_artifacts=True
+                save_processed_data=False,
+                save_model_artifacts=False
             )
             
-            if train_data is None:
-                print("❌ Ошибка обработки данных")
-                return False
+            print(f"📊 Размер обучающих данных: {train_data.shape}")
+            print(f"📊 Размер тестовых данных: {test_data.shape}")
             
-            # Обучаем модель
-            print(f"\n🤖 Обучение модели: {params['model_type']}")
-            metrics, feature_importance = train_model(
-                train_data, test_data, args.target,
-                research_path=research_path,
+            # Обучаем модель с помощью ModelTrainer
+            print(f"\n🚀 Обучение модели: {params['model_type']}")
+            trainer = ModelTrainer(
                 model_type=params['model_type'],
-                model_hyperparameters=params['model_params'],
-                plot_learning_curves=args.learning_curves,
-                save_run_results=True
+                model_hyperparameters=params['model_params']
+            )
+            
+            metrics, feature_importance = trainer.train(
+                train_data, test_data, args.target,
+                output_path=None,
+                plot_learning_curves=False,
+                save_run_results=False
             )
             
             if not metrics:
                 print("❌ Ошибка обучения модели")
                 return False
             
-            # Создаем production pipeline
-            print("\n💾 Создание production pipeline...")
-            
-            # Для простоты, создаем заглушки состояний препроцессоров
-            # В реальной реализации это будут состояния обученных препроцессоров
-            preprocessor_states = {
-                'imputation': {'method': params['imputation_method'], 'params': params['imputation_params']},
-                'encoding': {'method': params['encoding_method'], 'params': params['encoding_params']},
-                'scaling': {'method': params['scaling_method'], 'params': params['scaling_params']}
-            }
-            
-            # Получаем обученную модель - для CLI нужно получить модель из ModelTrainer
-            # Пока используем заглушку, так как у нас нет прямого доступа к обученной модели
-            print("⚠️ Внимание: Используется упрощенная версия сериализации для CLI")
-            print("📄 Создаем метаданные модели...")
-            
-            # Сохраняем только метаданные для демонстрации CLI
-            metadata = {
-                'dataset_name': Path(args.dataset).stem,
-                'target_column': args.target,
-                'features': list(train_data.columns[train_data.columns != args.target]),
-                'model_type': params['model_type'],
-                'chromosome': chromosome,
-                'pipeline_config': params,
-                'metrics': metrics
-            }
-            
-            # Сохраняем метаданные
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            # Создаем имя модели
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")  
             model_name = f"{Path(args.dataset).stem}_{params['model_type']}_{timestamp}"
+            model_save_path = self.models_dir / model_name
             
-            # Создаем полные метаданные
-            full_metadata = {
+            print(f"\n💾 Сохранение модели...")
+            
+            # Сохраняем обученную модель с помощью UniversalModelSerializer
+            model_info = UniversalModelSerializer.save_model(
+                trainer.model, 
+                str(model_save_path),
+                model_type=params['model_type']
+            )
+            
+            # Создаем метаданные модели
+            metadata = {
                 'model_name': model_name,
                 'dataset': args.dataset,
                 'target_column': args.target,
+                'features': list(train_data.columns[train_data.columns != args.target]),
                 'chromosome': chromosome,
                 'pipeline_config': params,
                 'metrics': metrics,
-                'preprocessor_states': preprocessor_states,
+                'model_info': model_info,
                 'created_at': timestamp,
                 'source': 'cli_chromosome'
             }
             
+            # Сохраняем метаданные 
             metadata_path = self.models_dir / f"{model_name}_metadata.json"
             with open(metadata_path, 'w', encoding='utf-8') as f:
-                json.dump(full_metadata, f, indent=2, ensure_ascii=False, default=str)
+                json.dump(metadata, f, indent=2, ensure_ascii=False, default=str)
             
             auprc = metrics.get('auprc', metrics.get('accuracy', 0))
-            print(f"\n✅ Метаданные модели сохранены: {metadata_path}")
+            print(f"\n✅ Модель успешно сохранена!")
+            print(f"📁 Папка модели: {model_save_path}")
+            print(f"📄 Метаданные: {metadata_path}")
             print(f"📈 Метрика: {auprc:.4f}")
             print(f"🧬 Хромосома: {chromosome}")
-            print(f"💡 Примечание: Для полной сериализации используйте интеграцию с ModelTrainer")
             
             return True
                 
@@ -214,40 +200,47 @@ class MLPipelineCLI:
                     scaling_method=params['scaling_method'],
                     scaling_params=params['scaling_params'],
                     save_processed_data=False,
-                    save_model_artifacts=True
+                    save_model_artifacts=False
                 )
                 
-                # Обучаем лучшую модель
-                metrics, feature_importance = train_model(
-                    train_data, test_data, args.target,
-                    research_path=research_path,
+                # Обучаем лучшую модель с помощью ModelTrainer
+                print(f"🚀 Обучение лучшей модели: {params['model_type']}")
+                trainer = ModelTrainer(
                     model_type=params['model_type'],
-                    model_hyperparameters=params['model_params'],
+                    model_hyperparameters=params['model_params']
+                )
+                
+                metrics, feature_importance = trainer.train(
+                    train_data, test_data, args.target,
+                    output_path=None,
                     plot_learning_curves=False,
-                    save_run_results=True
+                    save_run_results=False
+                )
+                
+                # Создаем имя лучшей модели
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                model_name = f"{Path(args.train).stem}_GA_best_{timestamp}"
+                model_save_path = self.models_dir / model_name
+                
+                print(f"💾 Сохранение лучшей модели...")
+                
+                # Сохраняем обученную модель с помощью UniversalModelSerializer
+                model_info = UniversalModelSerializer.save_model(
+                    trainer.model, 
+                    str(model_save_path),
+                    model_type=params['model_type']
                 )
                 
                 # Создаем метаданные лучшей модели
-                print("📄 Создание метаданных лучшей модели...")
-                
-                preprocessor_states = {
-                    'imputation': {'method': params['imputation_method'], 'params': params['imputation_params']},
-                    'encoding': {'method': params['encoding_method'], 'params': params['encoding_params']},
-                    'scaling': {'method': params['scaling_method'], 'params': params['scaling_params']}
-                }
-                
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                model_name = f"{Path(args.train).stem}_GA_best_{timestamp}"
-                
-                # Сохраняем метаданные
                 metadata = {
                     'model_name': model_name,
                     'dataset': args.train,
                     'target_column': args.target,
+                    'features': list(train_data.columns[train_data.columns != args.target]),
                     'chromosome': best_chromosome,
                     'pipeline_config': params,
                     'metrics': metrics,
-                    'preprocessor_states': preprocessor_states,
+                    'model_info': model_info,
                     'ga_results': {
                         'best_fitness': best_fitness,
                         'fitness_history': results['fitness_history']
@@ -256,12 +249,14 @@ class MLPipelineCLI:
                     'source': 'genetic_algorithm'
                 }
                 
+                # Сохраняем метаданные
                 metadata_path = self.models_dir / f"{model_name}_metadata.json"
                 with open(metadata_path, 'w', encoding='utf-8') as f:
                     json.dump(metadata, f, indent=2, ensure_ascii=False, default=str)
                 
-                print(f"✅ Метаданные лучшей модели сохранены: {metadata_path}")
-                print(f"💡 Примечание: Для полной сериализации используйте интеграцию с ModelTrainer")
+                print(f"✅ Лучшая модель успешно сохранена!")
+                print(f"📁 Папка модели: {model_save_path}")
+                print(f"📄 Метаданные: {metadata_path}")
             
             return True
             
@@ -303,7 +298,6 @@ class MLPipelineCLI:
             
             # Загружаем данные
             print(f"📊 Загрузка данных: {args.data}")
-            import pandas as pd
             data = pd.read_csv(args.data)
             
             print(f"📋 Размер данных: {data.shape}")
@@ -326,39 +320,86 @@ class MLPipelineCLI:
             if extra_features:
                 print(f"ℹ️ Дополнительные колонки: {list(extra_features)[:5]}{'...' if len(extra_features) > 5 else ''}")
             
-            # Выполнение предсказаний
-            print(f"\n🔮 Выполнение предсказаний...")
-            np.random.seed(42)  # Для воспроизводимости
+            # Загружаем и применяем модель
+            print(f"\n🔮 Загрузка и применение модели...")
             
-            # Определяем количество классов из метаданных
-            pipeline_config = metadata.get('pipeline_config', {})
-            metrics = metadata.get('metrics', {})
+            # Проверяем наличие модели
+            model_info = metadata.get('model_info')
+            if not model_info:
+                print("❌ Информация о модели отсутствует в метаданных")
+                return False
             
-            # Пытаемся определить количество классов
-            n_classes = 2  # По умолчанию бинарная классификация
+            # Ищем папку с моделью
+            model_name = metadata.get('model_name')
+            model_folder = self.models_dir / model_name
             
-            # Проверяем, есть ли информация о классах в метриках
-            if 'classification_report' in metrics:
-                # Пробуем извлечь количество классов из отчета
-                try:
-                    report = metrics['classification_report']
-                    if isinstance(report, dict):
-                        class_keys = [k for k in report.keys() if k.isdigit()]
-                        if class_keys:
-                            n_classes = len(class_keys)
-                except:
-                    pass
+            if not model_folder.exists():
+                print(f"❌ Папка модели не найдена: {model_folder}")
+                return False
             
-            # Для кредитного скоринга знаем, что это 3 класса
-            if 'credit-score' in metadata.get('dataset', '').lower():
-                n_classes = 3
+            # Загружаем модель
+            try:
+                model, loaded_model_info = UniversalModelSerializer.load_model(str(model_folder))
+                print(f"✅ Модель успешно загружена")
+                print(f"🔧 Тип: {loaded_model_info.get('model_type', 'unknown')}")
+                print(f"📦 Формат: {loaded_model_info.get('serialization_format', 'unknown')}")
+            except Exception as e:
+                print(f"❌ Ошибка загрузки модели: {e}")
+                return False
             
-            print(f"🎯 Обнаружено классов: {n_classes}")
+            # Подготавливаем данные для предсказания
+            target_column = metadata.get('target_column')
+            expected_features = metadata.get('features', [])
             
-            # Генерируем предсказания для нужного количества классов
-            predictions = np.random.choice(range(n_classes), size=len(data))
-            probabilities = np.random.rand(len(data), n_classes)
-            probabilities = probabilities / probabilities.sum(axis=1, keepdims=True)
+            # Удаляем целевую колонку если она присутствует
+            prediction_data = data.copy()
+            if target_column in prediction_data.columns:
+                prediction_data = prediction_data.drop(columns=[target_column])
+                print(f"ℹ️ Удалена целевая колонка '{target_column}' из данных для предсказания")
+            
+            # Проверяем соответствие признаков
+            missing_features = set(expected_features) - set(prediction_data.columns)
+            if missing_features:
+                print(f"⚠️ Отсутствующие признаки: {list(missing_features)}")
+                # Добавляем недостающие признаки с нулевыми значениями
+                for feature in missing_features:
+                    prediction_data[feature] = 0
+                    print(f"  + Добавлен '{feature}' = 0")
+            
+            # Используем только ожидаемые признаки в правильном порядке
+            prediction_data = prediction_data[expected_features]
+            
+            print(f"📊 Данные для предсказания: {prediction_data.shape}")
+            
+            # Выполняем предсказания
+            try:
+                predictions = model.predict(prediction_data)
+                probabilities = model.predict_proba(prediction_data) if hasattr(model, 'predict_proba') else None
+                
+                # Для нейронных сетей может потребоваться специальная обработка
+                model_type = loaded_model_info.get('model_type', 'unknown')
+                if model_type == 'neural_network':
+                    # Для нейронных сетей predictions может быть вероятностями
+                    if predictions.ndim > 1 and predictions.shape[1] > 1:
+                        probabilities = predictions
+                        predictions = np.argmax(predictions, axis=1)
+                    elif predictions.ndim == 1 or predictions.shape[1] == 1:
+                        # Бинарная классификация
+                        probabilities = np.column_stack([1 - predictions.ravel(), predictions.ravel()])
+                        predictions = (predictions > 0.5).astype(int).ravel()
+                
+                # Определяем количество классов
+                if probabilities is not None:
+                    n_classes = probabilities.shape[1]
+                else:
+                    n_classes = len(np.unique(predictions))
+                
+                print(f"🎯 Количество классов: {n_classes}")
+                print(f"✅ Предсказания выполнены успешно")
+                
+            except Exception as e:
+                print(f"❌ Ошибка при выполнении предсказаний: {e}")
+                return False
             
             print(f"📈 Результаты предсказаний:")
             print(f"🔢 Количество записей: {len(predictions)}")
@@ -384,10 +425,7 @@ class MLPipelineCLI:
             if args.output:
                 output_file = args.output
             else:
-                # Автоматически генерируем имя файла в папке results в корне проекта
-                from datetime import datetime
-                import os
-                
+                # Автоматически генерируем имя файла в папке results в корне проекта  
                 # Определяем корень проекта (папка, содержащая src)
                 current_dir = Path(__file__).parent  # src/
                 project_root = current_dir.parent  # project/
@@ -407,7 +445,7 @@ class MLPipelineCLI:
             output_data.to_csv(output_file, index=False)
             
             # Показываем полный путь
-            full_path = os.path.abspath(output_file)
+            full_path = os.path.abspath(str(output_file))
             print(f"\n💾 Результаты предсказаний сохранены:")
             print(f"📄 Полный путь: {full_path}")
             print(f"📊 Структура: {len(data)} записей + prediction + {n_classes} probability columns")

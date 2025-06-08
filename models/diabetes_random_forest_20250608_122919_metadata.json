@@ -1,0 +1,104 @@
+{
+  "model_name": "diabetes_random_forest_20250608_122919",
+  "dataset": "../datasets/diabetes.csv",
+  "target_column": "Outcome",
+  "chromosome": [
+    1,
+    1,
+    0,
+    0,
+    1,
+    0,
+    0,
+    4,
+    4,
+    0,
+    2,
+    1,
+    2,
+    1,
+    0,
+    1,
+    0,
+    0,
+    1,
+    2
+  ],
+  "pipeline_config": {
+    "imputation_method": "median",
+    "imputation_params": {},
+    "outlier_method": "none",
+    "outlier_params": {},
+    "resampling_method": "none",
+    "resampling_params": {},
+    "encoding_method": "onehot",
+    "encoding_params": {
+      "max_cardinality_threshold": 50,
+      "drop": "first"
+    },
+    "scaling_method": "minmax",
+    "scaling_params": {},
+    "model_type": "random_forest",
+    "model_params": {
+      "n_estimators": 25,
+      "max_depth": 5,
+      "min_samples_split": 5,
+      "min_samples_leaf": 5
+    }
+  },
+  "metrics": {
+    "evaluation_set_description": "test_set (shape: (154, 8))",
+    "accuracy": 0.7727272727272727,
+    "f1_score_weighted": 0.7712372715859952,
+    "f1_score_micro": 0.7727272727272727,
+    "f1_score_macro": 0.7493839215139257,
+    "roc_auc": 0.8345270890725436,
+    "auprc": 0.7443075920057702,
+    "classification_report": {
+      "0": {
+        "precision": 0.8137254901960784,
+        "recall": 0.8383838383838383,
+        "f1-score": 0.8258706467661692,
+        "support": 99.0
+      },
+      "1": {
+        "precision": 0.6923076923076923,
+        "recall": 0.6545454545454545,
+        "f1-score": 0.6728971962616822,
+        "support": 55.0
+      },
+      "accuracy": 0.7727272727272727,
+      "macro avg": {
+        "precision": 0.7530165912518854,
+        "recall": 0.7464646464646465,
+        "f1-score": 0.7493839215139257,
+        "support": 154.0
+      },
+      "weighted avg": {
+        "precision": 0.7703619909502262,
+        "recall": 0.7727272727272727,
+        "f1-score": 0.7712372715859952,
+        "support": 154.0
+      }
+    }
+  },
+  "preprocessor_states": {
+    "imputation": {
+      "method": "median",
+      "params": {}
+    },
+    "encoding": {
+      "method": "onehot",
+      "params": {
+        "max_cardinality_threshold": 50,
+        "drop": "first"
+      }
+    },
+    "scaling": {
+      "method": "minmax",
+      "params": {}
+    }
+  },
+  "created_at": "20250608_122919",
+  "source": "cli_chromosome"
+}

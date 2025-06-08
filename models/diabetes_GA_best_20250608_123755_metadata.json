@@ -1,0 +1,118 @@
+{
+  "model_name": "diabetes_GA_best_20250608_123755",
+  "dataset": "../datasets/diabetes.csv",
+  "target_column": "Outcome",
+  "features": [
+    "Pregnancies",
+    "Glucose",
+    "BloodPressure",
+    "SkinThickness",
+    "Insulin",
+    "BMI",
+    "DiabetesPedigreeFunction",
+    "Age"
+  ],
+  "chromosome": [
+    0,
+    3,
+    2,
+    1,
+    2,
+    2,
+    0,
+    2,
+    0,
+    1,
+    2,
+    4,
+    0,
+    0,
+    1,
+    1,
+    6,
+    4,
+    3,
+    2
+  ],
+  "pipeline_config": {
+    "imputation_method": "knn",
+    "imputation_params": {
+      "n_neighbors": 10
+    },
+    "outlier_method": "isolation_forest",
+    "outlier_params": {
+      "n_estimators": 100,
+      "contamination": 0.025
+    },
+    "resampling_method": "none",
+    "resampling_params": {},
+    "encoding_method": "label",
+    "encoding_params": {},
+    "scaling_method": "none",
+    "scaling_params": {},
+    "model_type": "random_forest",
+    "model_params": {
+      "max_depth": 20,
+      "min_samples_split": 15,
+      "min_samples_leaf": 5
+    }
+  },
+  "metrics": {
+    "evaluation_set_description": "test_set (shape: (154, 8))",
+    "accuracy": 0.7467532467532467,
+    "f1_score_weighted": 0.7472512396370264,
+    "f1_score_micro": 0.7467532467532467,
+    "f1_score_macro": 0.7253395527507203,
+    "roc_auc": 0.8277318640955005,
+    "auprc": 0.7302658629607125,
+    "classification_report": {
+      "0": {
+        "precision": 0.8061224489795918,
+        "recall": 0.797979797979798,
+        "f1-score": 0.8020304568527918,
+        "support": 99.0
+      },
+      "1": {
+        "precision": 0.6428571428571429,
+        "recall": 0.6545454545454545,
+        "f1-score": 0.6486486486486487,
+        "support": 55.0
+      },
+      "accuracy": 0.7467532467532467,
+      "macro avg": {
+        "precision": 0.7244897959183674,
+        "recall": 0.7262626262626263,
+        "f1-score": 0.7253395527507203,
+        "support": 154.0
+      },
+      "weighted avg": {
+        "precision": 0.7478134110787172,
+        "recall": 0.7467532467532467,
+        "f1-score": 0.7472512396370264,
+        "support": 154.0
+      }
+    }
+  },
+  "model_info": {
+    "model_type": "random_forest",
+    "serialization_format": "joblib",
+    "model_path": "sklearn_model.joblib",
+    "created_at": "2025-06-08T12:37:55.611718",
+    "library_versions": {
+      "sklearn": "1.6.1",
+      "tensorflow": "2.19.0",
+      "pandas": "2.2.3",
+      "numpy": "1.26.4"
+    }
+  },
+  "ga_results": {
+    "best_fitness": 0.7302658629607125,
+    "fitness_history": [
+      0.7245643580884285,
+      0.7294821779515884,
+      0.7302658629607125
+    ]
+  },
+  "created_at": "20250608_123755",
+  "source": "genetic_algorithm"
+}

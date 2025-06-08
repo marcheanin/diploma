@@ -445,7 +445,7 @@ def process_data(train_path, test_path, target_column,
         experiment_name_parts.append(scaling_method)
     experiment_name = "_".join(experiment_name_parts)
     
-    results_path = os.path.join('results', dataset_name, experiment_name)
+    results_path = os.path.join('research', dataset_name, experiment_name)
     research_path = os.path.join("research", dataset_name, experiment_name)
     
     if save_processed_data:
