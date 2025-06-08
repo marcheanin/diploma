@@ -255,7 +255,7 @@ def evaluate_chromosome(chromosome_genes, train_path_ga, test_path_ga, target_co
     fitness = -1.0 
     try:
         print(f"\n[GA - Chromosome: {chromosome_genes}] Calling process_data...") # Reduced verbosity
-        processed_train_data_df, processed_test_data_df, research_path_for_chromosome_config = process_data(
+        processed_train_data_df, processed_test_data_df, research_path_for_chromosome_config, preprocessor_states = process_data(
             train_path_ga, test_path_ga, target_column_ga,
             imputation_method=current_imputation_method,
             imputation_params=current_imputation_params,

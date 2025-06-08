@@ -1,7 +1,7 @@
 import tensorflow as tf # Ensure TensorFlow is imported early
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report, accuracy_score, f1_score, average_precision_score, roc_auc_score, precision_recall_curve, auc
+from sklearn.metrics import classification_report, accuracy_score, f1_score, average_precision_score, roc_auc_score, precision_recall_curve, auc, precision_score, recall_score
 from sklearn.preprocessing import LabelBinarizer, LabelEncoder
 from sklearn.linear_model import LogisticRegression
 import pandas as pd
@@ -359,72 +359,72 @@ class ModelTrainer:
                         y_pred_proba = keras_probas
 
 
+            # Базовые метрики
             metrics['accuracy'] = accuracy_score(y_test, y_pred)
+            
+            # F1-Score в различных вариантах
+            if y_train.nunique() == 2:
+                # Для бинарной классификации - основной F1
+                metrics['f1_score'] = f1_score(y_test, y_pred, zero_division=0)
+            else:
+                # Для мультиклассовой - macro как основной
+                metrics['f1_score'] = f1_score(y_test, y_pred, average='macro', zero_division=0)
+            
             metrics['f1_score_weighted'] = f1_score(y_test, y_pred, average='weighted', zero_division=0)
             metrics['f1_score_micro'] = f1_score(y_test, y_pred, average='micro', zero_division=0)
             metrics['f1_score_macro'] = f1_score(y_test, y_pred, average='macro', zero_division=0)
             
+            # Precision и Recall
+            if y_train.nunique() == 2:
+                metrics['precision'] = precision_score(y_test, y_pred, zero_division=0)
+                metrics['recall'] = recall_score(y_test, y_pred, zero_division=0)
+            else:
+                metrics['precision'] = precision_score(y_test, y_pred, average='macro', zero_division=0)
+                metrics['recall'] = recall_score(y_test, y_pred, average='macro', zero_division=0)
+            
             num_unique_classes = y_train.nunique() 
 
+            # ROC-AUC и AUPRC
             if y_pred_proba is not None:
-                if num_unique_classes == 2: 
-                    if y_pred_proba.ndim == 2:
-                        if y_pred_proba.shape[1] == 2:
-                            y_pred_proba_binary = y_pred_proba[:, 1]
-                        elif y_pred_proba.shape[1] == 1: 
-                            y_pred_proba_binary = y_pred_proba.ravel()
-                        else: 
-                            print(f"Warning: y_pred_proba has unexpected shape {y_pred_proba.shape} for binary classification. Using as is for AUPRC/ROC AUC.")
-                            y_pred_proba_binary = y_pred_proba 
-                    else: 
-                        y_pred_proba_binary = y_pred_proba
+                try:
+                    if num_unique_classes == 2: 
+                        # Бинарная классификация
+                        if y_pred_proba.ndim == 2 and y_pred_proba.shape[1] == 2:
+                            y_proba_pos = y_pred_proba[:, 1]
+                        elif y_pred_proba.ndim == 2 and y_pred_proba.shape[1] == 1:
+                            y_proba_pos = y_pred_proba.ravel()
+                        else:
+                            y_proba_pos = y_pred_proba.ravel() if y_pred_proba.ndim > 1 else y_pred_proba
 
-                    try:
-                        metrics['roc_auc'] = roc_auc_score(y_test, y_pred_proba_binary)
-                        precision, recall, _ = precision_recall_curve(y_test, y_pred_proba_binary)
-                        metrics['auprc'] = auc(recall, precision)
-                    except ValueError as e_metrics: 
-                        print(f"Could not compute ROC AUC or AUPRC for binary case: {e_metrics}")
-                        metrics['roc_auc'] = None
-                        metrics['auprc'] = None
-                
-                else: 
-                    try:
-                        metrics['roc_auc'] = roc_auc_score(y_test, y_pred_proba, multi_class='ovr', average='weighted')
+                        metrics['roc_auc'] = roc_auc_score(y_test, y_proba_pos)
+                        metrics['auprc'] = average_precision_score(y_test, y_proba_pos)
                         
-                        lb = LabelBinarizer()
-                        y_test_binarized = lb.fit_transform(y_test)
+                    else: 
+                        # Мультиклассовая классификация
+                        metrics['roc_auc'] = roc_auc_score(y_test, y_pred_proba, multi_class='ovr', average='macro')
+                        
+                        # Для AUPRC в мультиклассе используем macro-averaging
+                        try:
+                            lb = LabelBinarizer()
+                            y_test_bin = lb.fit_transform(y_test)
+                            if y_test_bin.shape[1] == 1:  # Если только 2 класса в тестовых данных
+                                y_test_bin = np.column_stack([1 - y_test_bin, y_test_bin])
+                            
+                            if y_test_bin.shape[1] == y_pred_proba.shape[1]:
+                                metrics['auprc'] = average_precision_score(y_test_bin, y_pred_proba, average='macro')
+                            else:
+                                print(f"Warning: Shape mismatch for AUPRC - using weighted average instead")
+                                metrics['auprc'] = average_precision_score(y_test, y_pred_proba, average='weighted', multi_class='ovr')
+                        except Exception as e_auprc:
+                            print(f"Could not compute AUPRC for multi-class: {e_auprc}")
+                            metrics['auprc'] = None
 
-                        if y_test_binarized.shape[1] == 1 and y_pred_proba.shape[1] > 1 and num_unique_classes > 2 :
-  
-                             encoder = LabelEncoder()
-                             all_classes = encoder.fit(y_train).classes_ 
-                             y_test_for_binarize = encoder.transform(y_test) 
-
-                             lb_mc = LabelBinarizer()
-                             lb_mc.fit(y_test_for_binarize) 
-                             y_test_binarized_mc = lb_mc.transform(y_test_for_binarize)
-
-                             if num_unique_classes == 2 and y_test_binarized_mc.shape[1] == 1 and y_pred_proba.shape[1] == 2:
-
-                                 metrics['auprc'] = average_precision_score(y_test, y_pred_proba[:, 1], average='weighted')
-                             elif y_test_binarized_mc.shape[1] != y_pred_proba.shape[1] and num_unique_classes > 1 :
-                                 print(f"Warning: Shape mismatch for multi-class AUPRC. y_test_binarized shape: {y_test_binarized_mc.shape}, y_pred_proba shape: {y_pred_proba.shape}. AUPRC might be incorrect.")
-                                 metrics['auprc'] = None 
-                             else:
-                                 metrics['auprc'] = average_precision_score(y_test_binarized_mc, y_pred_proba, average='weighted')
-
-                        elif y_test_binarized.shape[1] != y_pred_proba.shape[1] and num_unique_classes > 1 : 
-                             print(f"Warning: Shape mismatch for multi-class AUPRC (initial binarization). y_test_binarized shape: {y_test_binarized.shape}, y_pred_proba shape: {y_pred_proba.shape}. AUPRC might be incorrect.")
-                             metrics['auprc'] = None
-                        else: 
-                             metrics['auprc'] = average_precision_score(y_test_binarized, y_pred_proba, average="weighted")
-
-                    except ValueError as e_metrics:
-                        print(f"Could not compute ROC AUC or AUPRC for multi-class case: {e_metrics}")
-                        metrics['roc_auc'] = None
-                        metrics['auprc'] = None
+                except Exception as e_metrics: 
+                    print(f"Could not compute ROC AUC or AUPRC: {e_metrics}")
+                    metrics['roc_auc'] = None
+                    metrics['auprc'] = None
             else:
+                print("Warning: No probability predictions available - ROC AUC and AUPRC will be None")
                 metrics['roc_auc'] = None
                 metrics['auprc'] = None
 

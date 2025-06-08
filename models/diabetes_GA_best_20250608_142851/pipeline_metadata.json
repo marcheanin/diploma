@@ -1,0 +1,137 @@
+{
+  "model_name": "diabetes_GA_best_20250608_142851",
+  "dataset": "datasets/diabetes.csv",
+  "target_column": "Outcome",
+  "features": [
+    "Pregnancies",
+    "Glucose",
+    "BloodPressure",
+    "SkinThickness",
+    "Insulin",
+    "BMI",
+    "DiabetesPedigreeFunction",
+    "Age"
+  ],
+  "chromosome": [
+    0,
+    3,
+    0,
+    1,
+    3,
+    3,
+    2,
+    3,
+    4,
+    3,
+    0,
+    2,
+    1,
+    1,
+    0,
+    0,
+    7,
+    2,
+    5,
+    1
+  ],
+  "pipeline_config": {
+    "imputation_method": "knn",
+    "imputation_params": {
+      "n_neighbors": 10
+    },
+    "outlier_method": "isolation_forest",
+    "outlier_params": {
+      "n_estimators": 150,
+      "contamination": 0.05
+    },
+    "resampling_method": "smote",
+    "resampling_params": {
+      "k_neighbors": 9,
+      "sampling_strategy": 0.75
+    },
+    "encoding_method": "word2vec",
+    "encoding_params": {
+      "embedding_dim": 25,
+      "window": 3
+    },
+    "scaling_method": "standard",
+    "scaling_params": {
+      "with_mean": false,
+      "with_std": true
+    },
+    "model_type": "logistic_regression",
+    "model_params": {
+      "solver_penalty_config": {
+        "penalty": "l2",
+        "solver": "liblinear",
+        "l1_ratio": null
+      },
+      "class_weight": null,
+      "max_iter": 200
+    }
+  },
+  "metrics": {
+    "evaluation_set_description": "test_set (shape: (154, 8))",
+    "accuracy": 0.7402597402597403,
+    "f1_score": 0.6551724137931034,
+    "f1_score_weighted": 0.7429187192118227,
+    "f1_score_micro": 0.7402597402597403,
+    "f1_score_macro": 0.7234195402298851,
+    "precision": 0.6229508196721312,
+    "recall": 0.6909090909090909,
+    "roc_auc": 0.8154269972451791,
+    "auprc": 0.7124642461212612,
+    "classification_report": {
+      "0": {
+        "precision": 0.8172043010752689,
+        "recall": 0.7676767676767676,
+        "f1-score": 0.7916666666666666,
+        "support": 99.0
+      },
+      "1": {
+        "precision": 0.6229508196721312,
+        "recall": 0.6909090909090909,
+        "f1-score": 0.6551724137931034,
+        "support": 55.0
+      },
+      "accuracy": 0.7402597402597403,
+      "macro avg": {
+        "precision": 0.7200775603737,
+        "recall": 0.7292929292929293,
+        "f1-score": 0.7234195402298851,
+        "support": 154.0
+      },
+      "weighted avg": {
+        "precision": 0.7478280577170053,
+        "recall": 0.7402597402597403,
+        "f1-score": 0.7429187192118227,
+        "support": 154.0
+      }
+    }
+  },
+  "model_type": "logistic_regression",
+  "ga_results": {
+    "best_fitness": 0.7124642461212612,
+    "fitness_history": [
+      0.6996288222769037,
+      0.7124642461212612
+    ]
+  },
+  "created_at": "20250608_142851",
+  "source": "genetic_algorithm",
+  "model_info": {
+    "model_type": "logistic_regression",
+    "serialization_format": "joblib",
+    "model_path": "sklearn_model.joblib",
+    "created_at": "2025-06-08T14:28:51.620899",
+    "library_versions": {
+      "sklearn": "1.6.1",
+      "tensorflow": "2.19.0",
+      "pandas": "2.2.3",
+      "numpy": "1.26.4"
+    }
+  },
+  "preprocessor_path": "preprocessor_states.pkl",
+  "pipeline_created_at": "2025-06-08T14:28:51.625896",
+  "pipeline_version": "1.0"
+}

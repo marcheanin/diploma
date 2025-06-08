@@ -26,9 +26,9 @@ class MLPipelineCLI:
     """Командный интерфейс для ML пайплайна"""
     
     def __init__(self):
-        # Определяем корень проекта (папка, содержащая src)
-        current_dir = Path(__file__).parent  # src/
-        project_root = current_dir.parent  # project/
+        # Предполагаем что CLI всегда запускается из корня проекта
+        # python src/cli.py list-models
+        project_root = Path.cwd()  # текущая рабочая директория
         self.models_dir = project_root / "models"
         self.results_dir = project_root / "results" 
         self.models_dir.mkdir(exist_ok=True)
@@ -54,7 +54,7 @@ class MLPipelineCLI:
             
             # Обрабатываем данные
             print(f"\n🔄 Обработка данных...")
-            train_data, test_data, research_path = process_data(
+            train_data, test_data, research_path, preprocessor_states = process_data(
                 args.dataset, None, args.target,
                 imputation_method=params['imputation_method'],
                 imputation_params=params['imputation_params'],
@@ -96,17 +96,10 @@ class MLPipelineCLI:
             model_name = f"{Path(args.dataset).stem}_{params['model_type']}_{timestamp}"
             model_save_path = self.models_dir / model_name
             
-            print(f"\n💾 Сохранение модели...")
+            print(f"\n💾 Сохранение полного пайплайна...")
             
-            # Сохраняем обученную модель с помощью UniversalModelSerializer
-            model_info = UniversalModelSerializer.save_model(
-                trainer.model, 
-                str(model_save_path),
-                model_type=params['model_type']
-            )
-            
-            # Создаем метаданные модели
-            metadata = {
+            # Создаем метаданные полного пайплайна
+            pipeline_metadata = {
                 'model_name': model_name,
                 'dataset': args.dataset,
                 'target_column': args.target,
@@ -114,21 +107,40 @@ class MLPipelineCLI:
                 'chromosome': chromosome,
                 'pipeline_config': params,
                 'metrics': metrics,
-                'model_info': model_info,
+                'model_type': params['model_type'],
                 'created_at': timestamp,
                 'source': 'cli_chromosome'
             }
             
-            # Сохраняем метаданные 
+            # Создаем и сохраняем ProductionPipeline
+            production_pipeline = ProductionPipeline(
+                preprocessor_states=preprocessor_states,
+                model=trainer.model,
+                metadata=pipeline_metadata
+            )
+            
+            # Сохраняем полный пайплайн
+            production_pipeline.save(str(model_save_path))
+            
+            # Дополнительно сохраняем метаданные CLI для совместимости 
             metadata_path = self.models_dir / f"{model_name}_metadata.json"
             with open(metadata_path, 'w', encoding='utf-8') as f:
-                json.dump(metadata, f, indent=2, ensure_ascii=False, default=str)
+                json.dump(pipeline_metadata, f, indent=2, ensure_ascii=False, default=str)
+            
+            # Выводим основные метрики в консоль
+            print(f"\n📊 Метрики качества модели:")
+            print(f"   📈 AUPRC: {metrics.get('auprc', 0):.4f}")
+            print(f"   🎯 ROC-AUC: {metrics.get('roc_auc', 0):.4f}")
+            print(f"   🎲 F1-Score: {metrics.get('f1_score', 0):.4f}")
+            print(f"   ✅ Accuracy: {metrics.get('accuracy', 0):.4f}")
+            print(f"   🔍 Precision: {metrics.get('precision', 0):.4f}")
+            print(f"   📞 Recall: {metrics.get('recall', 0):.4f}")
             
             auprc = metrics.get('auprc', metrics.get('accuracy', 0))
             print(f"\n✅ Модель успешно сохранена!")
             print(f"📁 Папка модели: {model_save_path}")
             print(f"📄 Метаданные: {metadata_path}")
-            print(f"📈 Метрика: {auprc:.4f}")
+            print(f"📈 Основная метрика (AUPRC): {auprc:.4f}")
             print(f"🧬 Хромосома: {chromosome}")
             
             return True
@@ -187,7 +199,7 @@ class MLPipelineCLI:
                 params = decoded_info['pipeline_params']
                 
                 # Обрабатываем данные с лучшими параметрами
-                train_data, test_data, research_path = process_data(
+                train_data, test_data, research_path, preprocessor_states = process_data(
                     args.train, None, args.target,
                     imputation_method=params['imputation_method'],
                     imputation_params=params['imputation_params'],
@@ -222,17 +234,10 @@ class MLPipelineCLI:
                 model_name = f"{Path(args.train).stem}_GA_best_{timestamp}"
                 model_save_path = self.models_dir / model_name
                 
-                print(f"💾 Сохранение лучшей модели...")
-                
-                # Сохраняем обученную модель с помощью UniversalModelSerializer
-                model_info = UniversalModelSerializer.save_model(
-                    trainer.model, 
-                    str(model_save_path),
-                    model_type=params['model_type']
-                )
+                print(f"💾 Сохранение полного пайплайна лучшей модели...")
                 
                 # Создаем метаданные лучшей модели
-                metadata = {
+                ga_metadata = {
                     'model_name': model_name,
                     'dataset': args.train,
                     'target_column': args.target,
@@ -240,7 +245,7 @@ class MLPipelineCLI:
                     'chromosome': best_chromosome,
                     'pipeline_config': params,
                     'metrics': metrics,
-                    'model_info': model_info,
+                    'model_type': params['model_type'],
                     'ga_results': {
                         'best_fitness': best_fitness,
                         'fitness_history': results['fitness_history']
@@ -249,12 +254,31 @@ class MLPipelineCLI:
                     'source': 'genetic_algorithm'
                 }
                 
-                # Сохраняем метаданные
+                # Создаем и сохраняем ProductionPipeline
+                production_pipeline = ProductionPipeline(
+                    preprocessor_states=preprocessor_states,
+                    model=trainer.model,
+                    metadata=ga_metadata
+                )
+                
+                # Сохраняем полный пайплайн
+                production_pipeline.save(str(model_save_path))
+                
+                # Дополнительно сохраняем метаданные CLI для совместимости
                 metadata_path = self.models_dir / f"{model_name}_metadata.json"
                 with open(metadata_path, 'w', encoding='utf-8') as f:
-                    json.dump(metadata, f, indent=2, ensure_ascii=False, default=str)
+                    json.dump(ga_metadata, f, indent=2, ensure_ascii=False, default=str)
                 
-                print(f"✅ Лучшая модель успешно сохранена!")
+                # Выводим метрики лучшей модели в консоль
+                print(f"\n📊 Метрики лучшей модели:")
+                print(f"   📈 AUPRC: {metrics.get('auprc', 0):.4f}")
+                print(f"   🎯 ROC-AUC: {metrics.get('roc_auc', 0):.4f}")
+                print(f"   🎲 F1-Score: {metrics.get('f1_score', 0):.4f}")
+                print(f"   ✅ Accuracy: {metrics.get('accuracy', 0):.4f}")
+                print(f"   🔍 Precision: {metrics.get('precision', 0):.4f}")
+                print(f"   📞 Recall: {metrics.get('recall', 0):.4f}")
+                
+                print(f"\n✅ Лучшая модель успешно сохранена!")
                 print(f"📁 Папка модели: {model_save_path}")
                 print(f"📄 Метаданные: {metadata_path}")
             
@@ -323,18 +347,82 @@ class MLPipelineCLI:
             # Загружаем и применяем модель
             print(f"\n🔮 Загрузка и применение модели...")
             
-            # Проверяем наличие модели
-            model_info = metadata.get('model_info')
-            if not model_info:
-                print("❌ Информация о модели отсутствует в метаданных")
-                return False
-            
             # Ищем папку с моделью
             model_name = metadata.get('model_name')
             model_folder = self.models_dir / model_name
             
             if not model_folder.exists():
                 print(f"❌ Папка модели не найдена: {model_folder}")
+                return False
+            
+            # Проверяем, есть ли полный пайплайн (ProductionPipeline)
+            pipeline_metadata_path = model_folder / 'pipeline_metadata.json'
+            
+            if pipeline_metadata_path.exists():
+                print(f"🔧 Обнаружен полный пайплайн, загружаем ProductionPipeline...")
+                try:
+                    # Загружаем полный пайплайн
+                    production_pipeline = ProductionPipeline.load(str(model_folder))
+                    print(f"✅ Полный пайплайн успешно загружен")
+                    
+                    # Применяем полный пайплайн (с предобработкой)
+                    print(f"🔄 Применение полного пайплайна с предобработкой...")
+                    results = production_pipeline.predict(data)
+                    
+                    print(f"✅ Предсказания выполнены успешно")
+                    print(f"📈 Результаты предсказаний:")
+                    print(f"🔢 Количество записей: {len(results)}")
+                    
+                    # Показываем первые несколько результатов
+                    n_show = min(10, len(results))
+                    for i in range(n_show):
+                        pred = results.iloc[i]['prediction']
+                        prob_cols = [col for col in results.columns if col.startswith('probability_class_')]
+                        if prob_cols:
+                            prob_str = ", ".join([f"{results.iloc[i][col]:.3f}" for col in prob_cols])
+                            print(f"  [{i+1:2d}] Класс: {pred} (вероятности: [{prob_str}])")
+                        else:
+                            print(f"  [{i+1:2d}] Класс: {pred}")
+                    
+                    if len(results) > n_show:
+                        print(f"  ... и еще {len(results) - n_show} записей")
+                    
+                    # Определяем имя выходного файла
+                    if args.output:
+                        output_file = args.output
+                    else:
+                        # Автоматически генерируем имя файла в папке results в корне проекта  
+                        project_root = Path.cwd()  # текущая рабочая директория
+                        results_dir = project_root / "results"
+                        
+                        # Создаем папку results если её нет
+                        results_dir.mkdir(exist_ok=True)
+                        
+                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        data_path = Path(args.data)
+                        data_filename = data_path.stem  # Имя файла без расширения
+                        
+                        output_file = results_dir / f"predictions_{data_filename}_{model_name}_{timestamp}.csv"
+                    
+                    # Сохраняем результаты
+                    results.to_csv(output_file, index=False)
+                    
+                    print(f"\n💾 Результаты сохранены: {output_file}")
+                    print(f"📊 Колонки результата: {list(results.columns)}")
+                    
+                    return True
+                    
+                except Exception as e:
+                    print(f"❌ Ошибка загрузки полного пайплайна: {e}")
+                    print(f"🔄 Переключаемся на загрузку только модели...")
+            
+            # Fallback: загружаем только модель (старый метод)
+            print(f"🔧 Загружаем только модель (без предобработки)...")
+            
+            # Проверяем наличие модели
+            model_info = metadata.get('model_info')
+            if not model_info:
+                print("❌ Информация о модели отсутствует в метаданных")
                 return False
             
             # Загружаем модель
@@ -426,9 +514,7 @@ class MLPipelineCLI:
                 output_file = args.output
             else:
                 # Автоматически генерируем имя файла в папке results в корне проекта  
-                # Определяем корень проекта (папка, содержащая src)
-                current_dir = Path(__file__).parent  # src/
-                project_root = current_dir.parent  # project/
+                project_root = Path.cwd()  # текущая рабочая директория
                 results_dir = project_root / "results"
                 
                 # Создаем папку results если её нет
@@ -480,25 +566,47 @@ class MLPipelineCLI:
                 dataset = Path(metadata.get('dataset', 'unknown')).stem
                 target = metadata.get('target_column', 'unknown')
                 metrics = metadata.get('metrics', {})
-                auprc = metrics.get('auprc', metrics.get('accuracy', 'N/A'))
+                auprc = metrics.get('auprc', 'N/A')
+                roc_auc = metrics.get('roc_auc', 'N/A')
+                f1_score = metrics.get('f1_score', 'N/A')
+                accuracy = metrics.get('accuracy', 'N/A')
                 created = metadata.get('created_at', 'unknown')
                 source = metadata.get('source', 'manual')
                 
                 print(f"\n🤖 {model_name}")
                 print(f"   📊 Датасет: {dataset}")
                 print(f"   🎯 Цель: {target}")
-                print(f"   📈 Метрика: {auprc}")
+                print(f"   📈 AUPRC: {auprc if auprc != 'N/A' else 'N/A'}")
+                print(f"   🎯 ROC-AUC: {roc_auc if roc_auc != 'N/A' else 'N/A'}")
+                print(f"   🎲 F1-Score: {f1_score if f1_score != 'N/A' else 'N/A'}")
+                print(f"   ✅ Accuracy: {accuracy if accuracy != 'N/A' else 'N/A'}")
                 print(f"   📅 Создан: {created}")
                 print(f"   🔧 Источник: {source}")
                 
                 if args.verbose and 'chromosome' in metadata:
                     print(f"   🧬 Хромосома: {metadata['chromosome']}")
                 
-                # Проверяем наличие pkl файла
+                # Проверяем наличие полной модели (папка или pkl файл)
+                model_folder = self.models_dir / model_name
                 pkl_path = self.models_dir / f"{model_name}.pkl"
-                if pkl_path.exists():
-                    size = pkl_path.stat().st_size / 1024  # KB
-                    print(f"   💾 Модель: {size:.1f} KB")
+                
+                if model_folder.exists() and model_folder.is_dir():
+                    # Новый формат - папка с моделью
+                    try:
+                        # Ищем файлы модели в папке
+                        model_files = list(model_folder.glob("*.joblib")) + list(model_folder.glob("*.pkl")) + list(model_folder.glob("keras_model/"))
+                        if model_files:
+                            total_size = sum(f.stat().st_size for f in model_files if f.is_file())
+                            total_size += sum(sum(subf.stat().st_size for subf in f.rglob("*") if subf.is_file()) for f in model_files if f.is_dir())
+                            print(f"   💾 Модель: {total_size / 1024:.1f} KB (полная)")
+                        else:
+                            print(f"   💾 Модель: папка без файлов модели")
+                    except:
+                        print(f"   💾 Модель: папка (не удалось определить размер)")
+                elif pkl_path.exists():
+                    # Старый формат - pkl файл
+                    size = pkl_path.stat().st_size / 1024
+                    print(f"   💾 Модель: {size:.1f} KB (legacy)")
                 else:
                     print(f"   💾 Модель: метаданные только")
             

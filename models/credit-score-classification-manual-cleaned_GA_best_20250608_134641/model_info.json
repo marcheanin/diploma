@@ -1,0 +1,12 @@
+{
+  "model_type": "random_forest",
+  "serialization_format": "joblib",
+  "model_path": "sklearn_model.joblib",
+  "created_at": "2025-06-08T13:46:41.176455",
+  "library_versions": {
+    "sklearn": "1.6.1",
+    "tensorflow": "2.19.0",
+    "pandas": "2.2.3",
+    "numpy": "1.26.4"
+  }
+}

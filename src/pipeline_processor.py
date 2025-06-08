@@ -554,6 +554,7 @@ def process_data(train_path, test_path, target_column,
     print(f"[Pipeline Stage - Config: {experiment_name}] Resampling completed.")
 
     print(f"[Pipeline Stage - Config: {experiment_name}] Scaling ({scaling_method}, HPs: {scaling_params})...")
+    scaler_instance = None  # Инициализируем переменную скейлера для дальнейшего сохранения
     if scaling_method != 'none' and scaling_method in ['standard', 'minmax']:
         if target_column not in train_data.columns:
             print(f"CRITICAL WARNING: Target column '{target_column}' not found in train_data before scaling. Skipping scaling.")
@@ -561,7 +562,6 @@ def process_data(train_path, test_path, target_column,
             X_train_features = train_data.drop(columns=[target_column])
             y_train_target = train_data[target_column]
 
-            scaler_instance = None
             if scaling_method == 'standard':
                 scaler_instance = StandardScaler(**scaling_params)
             elif scaling_method == 'minmax':
@@ -609,6 +609,25 @@ def process_data(train_path, test_path, target_column,
         print(f"Warning: Unknown scaling method '{scaling_method}'. Scaling skipped.")
     print(f"[Pipeline Stage - Config: {experiment_name}] Scaling completed.")
     
+    # Собираем состояния всех препроцессоров для полной сериализации пайплайна
+    preprocessor_states = {
+        'preprocessor': preprocessor.get_preprocessor_state(),
+        'scaler': scaler_instance,
+        'scaler_method': scaling_method,
+        'processing_config': {
+            'imputation_method': imputation_method,
+            'imputation_params': imputation_params,
+            'outlier_method': outlier_method,
+            'outlier_params': outlier_params,
+            'encoding_method': encoding_method,
+            'encoding_params': encoding_params,
+            'resampling_method': resampling_method,
+            'resampling_params': resampling_params,
+            'scaling_method': scaling_method,
+            'scaling_params': scaling_params
+        }
+    }
+    
     train_data_path_out = None
     test_data_path_out = None
 
@@ -622,16 +641,10 @@ def process_data(train_path, test_path, target_column,
         else:
             test_data_path_out = None 
         print(f"[Pipeline Stage - Config: {experiment_name}] Data processing complete. Processed files saved to: {results_path}")
-        return train_data_path_out, test_data_path_out, research_path # Return paths
+        return train_data_path_out, test_data_path_out, research_path, preprocessor_states # Return paths + states
     else:
         print(f"[Pipeline Stage - Config: {experiment_name}] Data processing complete. Processed data NOT saved (GA mode).")
-        return train_data, test_data, research_path # Return DataFrames
-
-    # Return DataFrames directly if not saving, otherwise paths
-    if not save_processed_data:
-        return train_data, test_data, research_path
-    else:
-        return train_data_path_out, test_data_path_out, research_path
+        return train_data, test_data, research_path, preprocessor_states # Return DataFrames + states
 
 def train_model(train_data_input, test_data_input, target_column, research_path, 
                 model_type='random_forest', model_hyperparameters=None, 

@@ -1,0 +1,14 @@
+{
+  "model_type": "neural_network",
+  "serialization_format": "pickle",
+  "model_path": "model_fallback.pkl",
+  "created_at": "2025-06-08T14:18:14.318839",
+  "library_versions": {
+    "sklearn": "1.6.1",
+    "tensorflow": "2.19.0",
+    "pandas": "2.2.3",
+    "numpy": "1.26.4"
+  },
+  "fallback_used": true,
+  "original_error": "Invalid filepath extension for saving. Please add either a `.keras` extension for the native Keras format (recommended) or a `.h5` extension. Use `model.export(filepath)` if you want to export a SavedModel for use with TFLite/TFServing/etc. Received: filepath=C:\\Users\\march\\materials\\Programming\\cource_work\\diploma\\project\\models\\diabetes_GA_best_20250608_141814\\keras_model."
+}

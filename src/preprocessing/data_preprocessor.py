@@ -44,6 +44,50 @@ class DataPreprocessor:
         self.word2vec_dims = 50
         self.imputed_medians = {}
         self.imputed_modes = {}
+        
+    def get_preprocessor_state(self):
+        """
+        Извлекает все состояния препроцессора для сериализации
+        
+        Returns:
+            dict: Словарь с состояниями всех компонентов
+        """
+        return {
+            'encoders': self.encoders,
+            'cat_columns': self.cat_columns,
+            'numeric_columns': self.numeric_columns,
+            'target_encoder_le': self.target_encoder_le,
+            'lsa_vectorizer': self.lsa_vectorizer,
+            'lsa_svd': self.lsa_svd,
+            'lsa_feature_names': self.lsa_feature_names,
+            'medians': self.medians,
+            'lsa_components': self.lsa_components,
+            'word2vec_models': self.word2vec_models,
+            'word2vec_dims': self.word2vec_dims,
+            'imputed_medians': self.imputed_medians,
+            'imputed_modes': self.imputed_modes
+        }
+    
+    def set_preprocessor_state(self, state):
+        """
+        Восстанавливает состояние препроцессора из сериализованных данных
+        
+        Args:
+            state (dict): Словарь с состояниями компонентов
+        """
+        self.encoders = state.get('encoders', {})
+        self.cat_columns = state.get('cat_columns', [])
+        self.numeric_columns = state.get('numeric_columns', [])
+        self.target_encoder_le = state.get('target_encoder_le', None)
+        self.lsa_vectorizer = state.get('lsa_vectorizer', None)
+        self.lsa_svd = state.get('lsa_svd', None)
+        self.lsa_feature_names = state.get('lsa_feature_names', None)
+        self.medians = state.get('medians', {})
+        self.lsa_components = state.get('lsa_components', {})
+        self.word2vec_models = state.get('word2vec_models', {})
+        self.word2vec_dims = state.get('word2vec_dims', 50)
+        self.imputed_medians = state.get('imputed_medians', {})
+        self.imputed_modes = state.get('imputed_modes', {})
 
     def _get_column_types(self, data):
         """Identify numeric and categorical columns in the dataset."""

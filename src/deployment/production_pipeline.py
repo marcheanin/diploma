@@ -49,27 +49,33 @@ class ProductionPipeline:
             raw_data: Необработанные данные
             
         Returns:
-            Предобработанные данные
+            Предобработанные данные (только признаки, без целевой переменной)
         """
         print(f"[ProductionPipeline] Предобработка данных (shape: {raw_data.shape})")
         
         data = raw_data.copy()
         
+        # Удаляем целевую колонку если она присутствует (для предсказания)
+        target_col = self.metadata.get('target_column')
+        if target_col and target_col in data.columns:
+            data = data.drop(columns=[target_col])
+            print(f"[ProductionPipeline] Удалена целевая колонка '{target_col}' для предсказания")
+        
         # Применяем предобработку в том же порядке, что при обучении
         # Порядок важен! Он должен соответствовать порядку в pipeline_processor.py
         
         # 1. Импутация (если была применена)
-        if 'imputation' in self.preprocessor_states:
+        if 'preprocessor' in self.preprocessor_states:
             data = self._apply_imputation(data)
             print(f"[ProductionPipeline] Импутация применена")
         
         # 2. Кодирование (если было применено)
-        if 'encoding' in self.preprocessor_states:
+        if 'preprocessor' in self.preprocessor_states:
             data = self._apply_encoding(data)
             print(f"[ProductionPipeline] Кодирование применено")
         
         # 3. Масштабирование (если было применено)
-        if 'scaling' in self.preprocessor_states:
+        if 'scaler' in self.preprocessor_states:
             data = self._apply_scaling(data)
             print(f"[ProductionPipeline] Масштабирование применено")
         
@@ -110,21 +116,76 @@ class ProductionPipeline:
     
     def _apply_imputation(self, data: pd.DataFrame) -> pd.DataFrame:
         """Применяет сохраненные параметры импутации"""
-        # Пока заглушка - будет реализовано при интеграции с DataPreprocessor
-        print(f"[ProductionPipeline] Импутация: {self.preprocessor_states['imputation']['method']}")
-        return data
+        if 'preprocessor' not in self.preprocessor_states:
+            print(f"[ProductionPipeline] Пропуск импутации - состояние не найдено")
+            return data
+            
+        # Создаем новый экземпляр DataPreprocessor и восстанавливаем его состояние
+        from preprocessing.data_preprocessor import DataPreprocessor
+        preprocessor = DataPreprocessor()
+        preprocessor.set_preprocessor_state(self.preprocessor_states['preprocessor'])
+        
+        # Применяем импутацию с сохраненными параметрами
+        config = self.preprocessor_states.get('processing_config', {})
+        method = config.get('imputation_method', 'knn')
+        params = config.get('imputation_params', {})
+        
+        print(f"[ProductionPipeline] Импутация: {method}")
+        return preprocessor.impute(data, method=method, **params)
     
     def _apply_encoding(self, data: pd.DataFrame) -> pd.DataFrame:
         """Применяет сохраненные энкодеры"""
-        # Пока заглушка - будет реализовано при интеграции с DataPreprocessor
-        print(f"[ProductionPipeline] Кодирование: {self.preprocessor_states['encoding']['method']}")
-        return data
+        if 'preprocessor' not in self.preprocessor_states:
+            print(f"[ProductionPipeline] Пропуск кодирования - состояние не найдено")
+            return data
+            
+        # Создаем новый экземпляр DataPreprocessor и восстанавливаем его состояние
+        from preprocessing.data_preprocessor import DataPreprocessor
+        preprocessor = DataPreprocessor()
+        preprocessor.set_preprocessor_state(self.preprocessor_states['preprocessor'])
+        
+        # Применяем кодирование с сохраненными параметрами
+        config = self.preprocessor_states.get('processing_config', {})
+        method = config.get('encoding_method', 'label')
+        params = config.get('encoding_params', {})
+        target_col = self.metadata.get('target_column')
+        
+        print(f"[ProductionPipeline] Кодирование: {method}")
+        return preprocessor.encode(data, method=method, target_col=target_col, **params)
     
     def _apply_scaling(self, data: pd.DataFrame) -> pd.DataFrame:
         """Применяет сохраненные скейлеры"""
-        # Пока заглушка - будет реализовано при интеграции с DataPreprocessor
-        print(f"[ProductionPipeline] Масштабирование: {self.preprocessor_states['scaling']['method']}")
-        return data
+        scaler = self.preprocessor_states.get('scaler')
+        if scaler is None:
+            print(f"[ProductionPipeline] Пропуск масштабирования - скейлер не найден")
+            return data
+            
+        target_col = self.metadata.get('target_column')
+        
+        # Отделяем признаки от целевой переменной
+        if target_col in data.columns:
+            X_features = data.drop(columns=[target_col])
+            y_target = data[target_col]
+        else:
+            X_features = data
+            y_target = None
+        
+        print(f"[ProductionPipeline] Масштабирование: {self.preprocessor_states.get('scaler_method', 'unknown')}")
+        
+        try:
+            # Применяем скейлер
+            scaled_features = scaler.transform(X_features)
+            scaled_df = pd.DataFrame(scaled_features, columns=X_features.columns, index=X_features.index)
+            
+            # Объединяем обратно с целевой переменной если она была
+            if y_target is not None:
+                return pd.concat([scaled_df, y_target], axis=1)
+            else:
+                return scaled_df
+                
+        except Exception as e:
+            print(f"[ProductionPipeline] Ошибка масштабирования: {e}, пропускаем")
+            return data
     
     def _format_results(self, raw_data: pd.DataFrame, predictions: np.ndarray, 
                        probabilities: Optional[np.ndarray] = None) -> pd.DataFrame:
