@@ -2,8 +2,10 @@ import os
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, LabelEncoder
+import warnings
 
-# Assuming these modules are in the same directory or PYTHONPATH is set up
+warnings.filterwarnings('ignore', category=pd.errors.DtypeWarning)
+
 from preprocessing.data_loader import DataLoader
 from preprocessing.data_preprocessor import DataPreprocessor
 from preprocessing.outlier_remover import OutlierRemover
@@ -348,11 +350,6 @@ def decode_chromosome_full(chromosome, verbose=True):
     """
     return _chromosome_decoder.decode_chromosome(chromosome, verbose)
 
-
-# ==========================================
-# EXISTING PIPELINE PROCESSING FUNCTIONS  
-# ==========================================
-
 def get_dataset_name(path):
     """
     Extract dataset name from file path.
@@ -478,7 +475,6 @@ def process_data(train_path, test_path, target_column,
         print("Outlier removal skipped as method is 'none'.")
     print(f"[Pipeline Stage - Config: {experiment_name}] Outlier removal completed.")
 
-    # --- Diagnostic: Check for duplicate columns before encoding ---
     duplicated_cols_before_encoding = train_data.columns[train_data.columns.duplicated()].tolist()
     if duplicated_cols_before_encoding:
         print(f"WARNING: Duplicate columns found in train_data BEFORE encoding: {duplicated_cols_before_encoding}")
@@ -490,7 +486,6 @@ def process_data(train_path, test_path, target_column,
             print(f"WARNING: Duplicate columns found in test_data BEFORE encoding: {duplicated_cols_test_before_encoding}")
             test_data = test_data.loc[:, ~test_data.columns.duplicated(keep='first')]
             print(f"         Duplicates removed from test_data. Columns now: {test_data.columns.tolist()}")
-    # --- End Diagnostic ---
 
     print(f"[Pipeline Stage - Config: {experiment_name}] Encoding ({encoding_method}, HPs: {encoding_params})...")
 
@@ -621,11 +616,7 @@ def train_model(train_data_input, test_data_input, target_column, research_path,
     Trains a model using the specified data and parameters.
     Handles data splitting if test data is missing a target.
     """
-    # print(f"\n--- Training Model: {model_type} ---")
-    # print(f"Target column: {target_column}")
-    # print(f"Research path for this run: {research_path}")
     if model_hyperparameters:
-        # print(f"Model hyperparameters received: {model_hyperparameters}")
         pass
 
     if (save_run_results or plot_learning_curves) and research_path:
@@ -635,7 +626,7 @@ def train_model(train_data_input, test_data_input, target_column, research_path,
     current_train_data = train_data_input
     if isinstance(train_data_input, str):
         try:
-            current_train_data = pd.read_csv(train_data_input)
+            current_train_data = pd.read_csv(train_data_input, low_memory=False)
             # print(f"Loaded training data from path: {train_data_input}")
         except Exception as e:
             print(f"Error loading training data from path {train_data_input}: {e}")
@@ -644,15 +635,13 @@ def train_model(train_data_input, test_data_input, target_column, research_path,
     current_test_data = test_data_input
     if isinstance(test_data_input, str):
         try:
-            current_test_data = pd.read_csv(test_data_input)
-            # print(f"Loaded test data from path: {test_data_input}")
+            current_test_data = pd.read_csv(test_data_input, low_memory=False)
         except FileNotFoundError:
-            # print(f"Test data file not found at {test_data_input}. Proceeding without test data (will use validation split from train).")
             current_test_data = pd.DataFrame() # Ensure it's an empty DF, not None
         except Exception as e:
             print(f"Error loading test data from path {test_data_input}: {e}")
             current_test_data = pd.DataFrame() 
-    elif current_test_data is None: # If None was passed directly (not a path)
+    elif current_test_data is None: 
         current_test_data = pd.DataFrame()
 
 

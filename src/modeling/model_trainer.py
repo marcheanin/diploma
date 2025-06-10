@@ -1,3 +1,8 @@
+import os
+# Подавление предупреждений TensorFlow
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+
 import tensorflow as tf # Ensure TensorFlow is imported early
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.model_selection import train_test_split
@@ -6,7 +11,6 @@ from sklearn.preprocessing import LabelBinarizer, LabelEncoder
 from sklearn.linear_model import LogisticRegression
 import pandas as pd
 import numpy as np
-import os
 import matplotlib.pyplot as plt
 from sklearn.model_selection import learning_curve
 from tensorflow.keras.models import Sequential

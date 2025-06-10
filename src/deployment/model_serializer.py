@@ -10,6 +10,10 @@ import warnings
 from datetime import datetime
 from typing import Dict, Any, Tuple, Optional
 
+# Подавление предупреждений TensorFlow
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+
 # Попытка импорта TensorFlow для Keras моделей
 try:
     import tensorflow as tf

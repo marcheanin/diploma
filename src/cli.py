@@ -9,7 +9,12 @@ from pathlib import Path
 from datetime import datetime
 import pandas as pd
 
-# Добавляем текущую директорию в путь
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+
+import warnings
+warnings.filterwarnings('ignore', category=pd.errors.DtypeWarning)
+
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from ga_optimizer import GAConfig, run_genetic_algorithm
@@ -82,7 +87,6 @@ class MLPipelineCLI:
                 print("❌ Ошибка обучения модели")
                 return False
             
-            # Объединяем информацию об удаленных колонках
             process_dropped_cols = preprocessor_states.get('dropped_columns', [])
             all_dropped_cols = list(set(process_dropped_cols + trainer_dropped_cols))
             preprocessor_states['dropped_columns'] = all_dropped_cols
@@ -215,7 +219,6 @@ class MLPipelineCLI:
                     save_run_results=False
                 )
                 
-                # Объединяем информацию об удаленных колонках
                 process_dropped_cols = preprocessor_states.get('dropped_columns', [])
                 all_dropped_cols = list(set(process_dropped_cols + trainer_dropped_cols))
                 preprocessor_states['dropped_columns'] = all_dropped_cols
@@ -305,7 +308,7 @@ class MLPipelineCLI:
             print(f"🤖 Тип: {metadata.get('pipeline_config', {}).get('model_type', 'unknown')}")
             
             print(f"📊 Загрузка данных: {args.data}")
-            data = pd.read_csv(args.data)
+            data = pd.read_csv(args.data, low_memory=False)
             
             print(f"📋 Размер данных: {data.shape}")
             print(f"📊 Колонки: {list(data.columns)}")
@@ -388,13 +391,11 @@ class MLPipelineCLI:
             
             print(f"🔧 Загружаем только модель (без предобработки)...")
             
-            # Проверяем наличие модели
             model_info = metadata.get('model_info')
             if not model_info:
                 print("❌ Информация о модели отсутствует в метаданных")
                 return False
             
-            # Загружаем модель
             try:
                 model, loaded_model_info = UniversalModelSerializer.load_model(str(model_folder))
                 print(f"✅ Модель успешно загружена")
@@ -404,48 +405,38 @@ class MLPipelineCLI:
                 print(f"❌ Ошибка загрузки модели: {e}")
                 return False
             
-            # Подготавливаем данные для предсказания
             target_column = metadata.get('target_column')
             expected_features = metadata.get('features', [])
             
-            # Удаляем целевую колонку если она присутствует
             prediction_data = data.copy()
             if target_column in prediction_data.columns:
                 prediction_data = prediction_data.drop(columns=[target_column])
                 print(f"ℹ️ Удалена целевая колонка '{target_column}' из данных для предсказания")
             
-            # Проверяем соответствие признаков
             missing_features = set(expected_features) - set(prediction_data.columns)
             if missing_features:
                 print(f"⚠️ Отсутствующие признаки: {list(missing_features)}")
-                # Добавляем недостающие признаки с нулевыми значениями
                 for feature in missing_features:
                     prediction_data[feature] = 0
                     print(f"  + Добавлен '{feature}' = 0")
             
-            # Используем только ожидаемые признаки в правильном порядке
             prediction_data = prediction_data[expected_features]
             
             print(f"📊 Данные для предсказания: {prediction_data.shape}")
             
-            # Выполняем предсказания
             try:
                 predictions = model.predict(prediction_data)
                 probabilities = model.predict_proba(prediction_data) if hasattr(model, 'predict_proba') else None
                 
-                # Для нейронных сетей может потребоваться специальная обработка
                 model_type = loaded_model_info.get('model_type', 'unknown')
                 if model_type == 'neural_network':
-                    # Для нейронных сетей predictions может быть вероятностями
                     if predictions.ndim > 1 and predictions.shape[1] > 1:
                         probabilities = predictions
                         predictions = np.argmax(predictions, axis=1)
                     elif predictions.ndim == 1 or predictions.shape[1] == 1:
-                        # Бинарная классификация
                         probabilities = np.column_stack([1 - predictions.ravel(), predictions.ravel()])
                         predictions = (predictions > 0.5).astype(int).ravel()
                 
-                # Определяем количество классов
                 if probabilities is not None:
                     n_classes = probabilities.shape[1]
                 else:
@@ -461,7 +452,6 @@ class MLPipelineCLI:
             print(f"📈 Результаты предсказаний:")
             print(f"🔢 Количество записей: {len(predictions)}")
             
-            # Показываем первые несколько результатов
             n_show = min(10, len(predictions))
             for i in range(n_show):
                 prob_str = ", ".join([f"{probabilities[i][j]:.3f}" for j in range(n_classes)])
@@ -469,37 +459,29 @@ class MLPipelineCLI:
             
             if len(predictions) > n_show:
                 print(f"  ... и еще {len(predictions) - n_show} записей")
-            
-            # Создаем файл с результатами (всегда)
+        
             output_data = data.copy()
             output_data['prediction'] = predictions
-            
-            # Добавляем колонки для вероятностей всех классов
+
             for class_idx in range(n_classes):
                 output_data[f'probability_class_{class_idx}'] = probabilities[:, class_idx]
             
-            # Определяем имя выходного файла
             if args.output:
                 output_file = args.output
-            else:
-                # Автоматически генерируем имя файла в папке results в корне проекта  
+            else: 
                 project_root = Path.cwd()  # текущая рабочая директория
                 results_dir = project_root / "results"
                 
-                # Создаем папку results если её нет
                 results_dir.mkdir(exist_ok=True)
                 
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 model_name = metadata.get('model_name', 'unknown')
                 data_path = Path(args.data)
-                data_filename = data_path.stem  # Имя файла без расширения
-                
+                data_filename = data_path.stem  
                 output_file = results_dir / f"predictions_{data_filename}_{model_name}_{timestamp}.csv"
             
-            # Сохраняем результаты
             output_data.to_csv(output_file, index=False)
             
-            # Показываем полный путь
             full_path = os.path.abspath(str(output_file))
             print(f"\n💾 Результаты предсказаний сохранены:")
             print(f"📄 Полный путь: {full_path}")
@@ -518,7 +500,7 @@ class MLPipelineCLI:
         print("📋 Доступные модели:")
         
         try:
-            # Ищем файлы метаданных вместо .pkl файлов
+
             metadata_files = list(self.models_dir.glob("*_metadata.json"))
             
             if not metadata_files:
@@ -528,7 +510,6 @@ class MLPipelineCLI:
             for metadata_path in sorted(metadata_files):
                 model_name = metadata_path.stem.replace('_metadata', '')
                 
-                # Загружаем метаданные
                 with open(metadata_path, 'r', encoding='utf-8') as f:
                     metadata = json.load(f)
                 
@@ -555,14 +536,11 @@ class MLPipelineCLI:
                 if args.verbose and 'chromosome' in metadata:
                     print(f"   🧬 Хромосома: {metadata['chromosome']}")
                 
-                # Проверяем наличие полной модели (папка или pkl файл)
                 model_folder = self.models_dir / model_name
                 pkl_path = self.models_dir / f"{model_name}.pkl"
                 
                 if model_folder.exists() and model_folder.is_dir():
-                    # Новый формат - папка с моделью
                     try:
-                        # Ищем файлы модели в папке
                         model_files = list(model_folder.glob("*.joblib")) + list(model_folder.glob("*.pkl")) + list(model_folder.glob("keras_model/"))
                         if model_files:
                             total_size = sum(f.stat().st_size for f in model_files if f.is_file())
